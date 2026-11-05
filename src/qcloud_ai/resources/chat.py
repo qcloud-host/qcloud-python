@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Union, Literal, overload
+
+from .._base_client import SyncHTTPClient, AsyncHTTPClient
+from .._exceptions import _raise_for_status
+from .._streaming import Stream, AsyncStream
+from ..types.chat import ChatCompletion, ChatCompletionChunk
+
+
+class ChatCompletions:
+    """``client.chat.completions`` — mirrors the OpenAI Chat Completions API."""
+
+    def __init__(self, client: SyncHTTPClient) -> None:
+        self._client = client
+
+    @overload
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Literal[False] | None = ...,
+        **kwargs: Any,
+    ) -> ChatCompletion: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Literal[True],
+        **kwargs: Any,
+    ) -> Stream[ChatCompletionChunk]: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: bool = ...,
+        **kwargs: Any,
+    ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]: ...
+
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]:
+        body: Dict[str, Any] = {"model": model, "messages": messages, **kwargs}
+        if stream:
+            body["stream"] = True
+
+        response = self._client._request(
+            "POST",
+            "/chat/completions",
+            body=body,
+            stream=bool(stream),
+        )
+
+        if stream:
+            return Stream(response, cast=ChatCompletionChunk)
+
+        data = response.json()
+        _raise_for_status(response.status_code, data)
+        return ChatCompletion(**data)
+
+
+class AsyncChatCompletions:
+    """``client.chat.completions`` — async variant."""
+
+    def __init__(self, client: AsyncHTTPClient) -> None:
+        self._client = client
+
+    @overload
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Literal[False] | None = ...,
+        **kwargs: Any,
+    ) -> ChatCompletion: ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Literal[True],
+        **kwargs: Any,
+    ) -> AsyncStream[ChatCompletionChunk]: ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: bool = ...,
+        **kwargs: Any,
+    ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]: ...
+
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        stream: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]:
+        body: Dict[str, Any] = {"model": model, "messages": messages, **kwargs}
+        if stream:
+            body["stream"] = True
+
+        response = await self._client._request(
+            "POST",
+            "/chat/completions",
+            body=body,
+            stream=bool(stream),
+        )
+
+        if stream:
+            return AsyncStream(response, cast=ChatCompletionChunk)
+
+        data = response.json()
+        _raise_for_status(response.status_code, data)
+        return ChatCompletion(**data)
+
+
+class Chat:
+    """``client.chat`` namespace — contains the ``completions`` sub-resource."""
+
+    completions: ChatCompletions
+
+    def __init__(self, client: SyncHTTPClient) -> None:
+        self.completions = ChatCompletions(client)
+
+
+class AsyncChat:
+    """``client.chat`` namespace — async variant."""
+
+    completions: AsyncChatCompletions
+
+    def __init__(self, client: AsyncHTTPClient) -> None:
+        self.completions = AsyncChatCompletions(client)

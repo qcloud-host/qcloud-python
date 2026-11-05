@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qcloud-ai"
+version = "0.2.0"
+description = "Official Python client for the QCloud AI inference API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "QCloud", email = "info@qcloud.host" }]
+keywords = ["qcloud", "ai", "llm", "openai", "inference", "api"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.25.0,<1",
+    "pydantic>=2.0.0,<3",
+]
+
+[project.urls]
+Homepage = "https://qcloud.host"
+Documentation = "https://github.com/qcloud-host/qcloud-python#readme"
+Repository = "https://github.com/qcloud-host/qcloud-python"
+Issues = "https://github.com/qcloud-host/qcloud-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qcloud_ai"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "build>=1.2", "twine>=6", "ruff>=0.9"]
