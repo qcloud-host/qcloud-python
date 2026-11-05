@@ -101,7 +101,7 @@ finally:
     client.close()
 ```
 
-`api_key` / `QCLOUD_API_KEY` is required. `base_url` / `QCLOUD_BASE_URL` defaults to `https://qcloud.host/api/v1`. `timeout` is a per-network-operation timeout in seconds (default 600). `max_retries` defaults to 2. `default_headers` adds custom headers. `http_client` accepts an `httpx.Client` (or `httpx.AsyncClient` for the async client); closing QCloud also closes that injected client.
+`api_key` / `QCLOUD_API_KEY` is required. `base_url` / `QCLOUD_BASE_URL` defaults to `https://www.qcloud.host/api/v1`. `timeout` is a per-network-operation timeout in seconds (default 600). `max_retries` defaults to 2. `default_headers` adds custom headers. `http_client` accepts an `httpx.Client` (or `httpx.AsyncClient` for the async client); closing QCloud also closes that injected client.
 
 Typed errors include authentication, permission, billing, missing-model, rate-limit, connection, timeout, server, and response-validation errors. Responses are Pydantic objects; use `model_dump()` for dictionaries.
 
@@ -113,7 +113,7 @@ You can also keep an existing OpenAI Chat Completions integration:
 from openai import OpenAI
 
 client = OpenAI(
-    api_key=os.environ["QCLOUD_API_KEY"], base_url="https://qcloud.host/api/v1"
+    api_key=os.environ["QCLOUD_API_KEY"], base_url="https://www.qcloud.host/api/v1"
 )
 ```
 

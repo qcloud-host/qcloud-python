@@ -16,7 +16,7 @@ from ._exceptions import (
     _raise_for_status,
 )
 
-DEFAULT_BASE_URL = "https://qcloud.host/api/v1"
+DEFAULT_BASE_URL = "https://www.qcloud.host/api/v1"
 DEFAULT_TIMEOUT = 600.0
 DEFAULT_MAX_RETRIES = 2
 SDK_VERSION = "0.2.0"

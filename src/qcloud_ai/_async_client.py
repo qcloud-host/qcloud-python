@@ -20,7 +20,7 @@ class AsyncQCloudAI(AsyncHTTPClient):
 
         client = AsyncQCloudAI(api_key="qc-...")
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="<active-qcloud-model-id>",
             messages=[{"role": "user", "content": "Hello!"}],
         )
         print(response.choices[0].message.content)
