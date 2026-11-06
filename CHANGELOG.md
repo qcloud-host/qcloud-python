@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Sync/async session controls, single-use connection capabilities, and WebRTC signaling streams with explicit cleanup.
+- Catalog transport classification and incomplete-schema metadata.
+- Universal generation catalog/schema discovery and durable job submit/status/result/cancel helpers.
+- Sync/async polling, deadline and task-cancellation support, and stable recovery IDs.
+- Explicit metered consent and arbitrary JSON inputs/outputs, with no automatic generation POST retries.
+- Typed generation jobs, results, pending results, and terminal-state errors.
+- Local HTTP generation tests and cross-language backend contract coverage.
+
 ## 0.2.0
 
 - Backend HTTP contract tests for Python, TypeScript, streaming, cancellation and organization isolation.

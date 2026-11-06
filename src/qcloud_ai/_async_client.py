@@ -9,6 +9,7 @@ from .resources.chat import AsyncChat
 from .resources.completions import AsyncCompletions
 from .resources.embeddings import AsyncEmbeddings
 from .resources.models import AsyncModels
+from .resources.generation import AsyncGeneration
 
 
 class AsyncQCloudAI(AsyncHTTPClient):
@@ -30,6 +31,7 @@ class AsyncQCloudAI(AsyncHTTPClient):
     completions: AsyncCompletions
     embeddings: AsyncEmbeddings
     models: AsyncModels
+    generation: AsyncGeneration
 
     def __init__(
         self,
@@ -55,3 +57,4 @@ class AsyncQCloudAI(AsyncHTTPClient):
         self.completions = AsyncCompletions(self)
         self.embeddings = AsyncEmbeddings(self)
         self.models = AsyncModels(self)
+        self.generation = AsyncGeneration(self)

@@ -6,6 +6,8 @@ from typing import Any, Optional
 class QCloudAIError(Exception):
     """Base exception for all QCloud AI SDK errors."""
 
+    client_request_id: str | None = None
+
 
 class APIError(QCloudAIError):
     """Raised when the API returns a non-success status code."""

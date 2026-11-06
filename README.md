@@ -5,7 +5,7 @@
 
 # QCloud Python
 
-A typed Python client for QCloud inference, with synchronous and asynchronous APIs.
+A typed Python client for QCloud inference and generation, with synchronous and asynchronous APIs.
 
 ## Install
 
@@ -134,12 +134,64 @@ See [examples](examples) for tools, JSON output, and asynchronous streaming. Tes
 
 ## API coverage
 
+`client.generation.models.list()`, `.retrieve(id)`, and `.schema(id)` discover the
+generation catalog and its complete per-model contracts. `client.generation.jobs`
+supports `submit`, `retrieve`, `result`, `cancel`, `wait`, and `subscribe` for any
+schema-defined JSON input/output on queued models. All methods also exist on
+`AsyncQCloud`. Catalog models expose `transport`, `queued_available`, and
+`schema_available`. Check `queued_available` before submitting; WebSocket,
+WebRTC, and unknown transports require separate session support and cannot run
+through these job helpers.
+
+```python
+import json
+import os
+from uuid import uuid4
+
+completed = client.generation.jobs.subscribe(
+    model=os.environ["QCLOUD_GENERATION_MODEL"],
+    input=json.loads(os.environ["QCLOUD_GENERATION_INPUT"]),
+    billing_mode="metered",
+    client_request_id=str(uuid4()),  # Persist with the original input.
+    timeout=600,
+    poll_interval=1,
+)
+print(completed.result.data)
+```
+
+Metered submission explicitly accepts variable charges; there is no guaranteed
+spending-cap field. Generation POSTs are never automatically replayed. Reuse the
+same UUID and identical body after an ambiguous failure. Typed submission errors
+retain `client_request_id`. `GenerationJobError` carries the
+failed/cancelled/review job; `GenerationTimeoutError` retains `job_id`.
+Async task cancellation and polling timeouts stop the client only; call
+`jobs.cancel(id)` explicitly for best-effort server cancellation. Synchronous
+polling checks a monotonic deadline and bounds HTTPX network-operation timeouts;
+the async client additionally enforces a wall-clock deadline across the request.
+`result(id)` returns `GenerationResult` or `GenerationPendingResult`.
+New catalog models do not require an SDK update.
+
+`client.generation.sessions.create/retrieve/connect/close` manage explicitly
+enabled WebSocket/WebRTC sessions. Creation requires metered consent, transport,
+and a stable UUID; `max_duration_seconds` defaults to 300. `connect` returns a
+single-use capability, not an open socket. Keep tokens/subprotocols in memory
+and use the returned `encoding` for native frames. Never reconnect or replay
+frames automatically. Use `with client.generation.sessions.offer(id, sdp=offer,
+session_token=capability.token) as events` for WebRTC signaling; the async client
+uses `async with await client.generation.sessions.offer(...)`. Keep this stream
+open for the session lifetime. Exiting its context releases the connection.
+Use a direct backend base URL for long-lived connections. Unexpected EOF and
+streamed errors are surfaced; retrieve session status for billing. Real-time
+availability requires a configured, verified backend transport and is separate
+from catalog presence.
+
 | Resource                                         | Support                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------- |
 | Chat Completions                                 | Text, streaming, tool-call and structured-output parameters |
 | Models                                           | List and retrieve catalog entries                           |
 | Embeddings                                       | Create embeddings with a supported model                    |
 | Legacy Completions                               | Available when the selected provider/model supports it      |
+| Generation models and jobs                      | Schema discovery, arbitrary JSON, durable jobs and polling |
 | OpenAI Responses, files, audio, realtime         | Not exposed by this SDK/backend release                     |
 | Native Anthropic Messages / Claude Code protocol | Not exposed by the current QCloud backend                   |
 

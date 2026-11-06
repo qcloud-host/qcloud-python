@@ -12,21 +12,40 @@ Usage::
     print(response.choices[0].message.content)
 """
 
-from ._client import QCloudAI
 from ._async_client import AsyncQCloudAI
 from ._base_client import SDK_VERSION as __version__
+from ._client import QCloudAI
 from ._exceptions import (
-    QCloudAIError,
+    APIConnectionError,
     APIError,
     APIResponseValidationError,
-    APIConnectionError,
     APITimeoutError,
     AuthenticationError,
     InsufficientCreditsError,
     InternalServerError,
     NotFoundError,
     PermissionDeniedError,
+    QCloudAIError,
     RateLimitError,
+)
+from .resources.generation import GenerationJobError, GenerationTimeoutError
+from .resources.generation_sessions import (
+    AsyncGenerationSessionStream,
+    GenerationSessionStream,
+)
+from .types.generation import (
+    GenerationBilling,
+    GenerationJob,
+    GenerationModel,
+    GenerationModelList,
+    GenerationPendingResult,
+    GenerationResult,
+    GenerationSession,
+    GenerationSessionConnection,
+    GenerationSessionEvent,
+    GenerationSubscription,
+    GenerationWebRTCConnection,
+    GenerationWebSocketConnection,
 )
 
 __all__ = [
@@ -46,6 +65,22 @@ __all__ = [
     "NotFoundError",
     "PermissionDeniedError",
     "RateLimitError",
+    "GenerationJobError",
+    "GenerationTimeoutError",
+    "GenerationModel",
+    "GenerationModelList",
+    "GenerationBilling",
+    "GenerationJob",
+    "GenerationResult",
+    "GenerationPendingResult",
+    "GenerationSubscription",
+    "GenerationSession",
+    "GenerationSessionConnection",
+    "GenerationSessionEvent",
+    "GenerationWebSocketConnection",
+    "GenerationWebRTCConnection",
+    "GenerationSessionStream",
+    "AsyncGenerationSessionStream",
 ]
 
 QCloud = QCloudAI

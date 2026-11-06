@@ -9,6 +9,7 @@ from .resources.chat import Chat
 from .resources.completions import Completions
 from .resources.embeddings import Embeddings
 from .resources.models import Models
+from .resources.generation import Generation
 
 
 class QCloudAI(SyncHTTPClient):
@@ -30,6 +31,7 @@ class QCloudAI(SyncHTTPClient):
     completions: Completions
     embeddings: Embeddings
     models: Models
+    generation: Generation
 
     def __init__(
         self,
@@ -55,3 +57,4 @@ class QCloudAI(SyncHTTPClient):
         self.completions = Completions(self)
         self.embeddings = Embeddings(self)
         self.models = Models(self)
+        self.generation = Generation(self)

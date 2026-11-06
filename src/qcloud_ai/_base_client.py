@@ -153,21 +153,30 @@ class SyncHTTPClient(BaseClient):
         *,
         body: dict[str, Any] | None = None,
         stream: bool = False,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
-        for attempt in range(self.max_retries + 1):
+        request_timeout = self.timeout if timeout is None else timeout
+        retries = self.max_retries if max_retries is None else max_retries
+        if not math.isfinite(request_timeout) or request_timeout <= 0:
+            raise ValueError("timeout must be positive")
+        if not isinstance(retries, int) or retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        for attempt in range(retries + 1):
             response = None
             try:
                 request = self._client.build_request(
                     method,
                     self._make_url(path),
-                    headers=self._headers,
+                    headers={**self._headers, **(headers or {})},
                     json=body,
-                    timeout=self.timeout,
+                    timeout=request_timeout,
                 )
                 response = self._client.send(
                     request, stream=stream, follow_redirects=False
                 )
-                if attempt < self.max_retries and (
+                if attempt < retries and (
                     response.status_code == 429
                     or (
                         method == "GET"
@@ -189,7 +198,7 @@ class SyncHTTPClient(BaseClient):
                 if response is not None:
                     response.close()
                 # An ambiguous POST failure may already have generated billable output.
-                if method == "GET" and attempt < self.max_retries:
+                if method == "GET" and attempt < retries:
                     time.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):
@@ -227,21 +236,30 @@ class AsyncHTTPClient(BaseClient):
         *,
         body: dict[str, Any] | None = None,
         stream: bool = False,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
-        for attempt in range(self.max_retries + 1):
+        request_timeout = self.timeout if timeout is None else timeout
+        retries = self.max_retries if max_retries is None else max_retries
+        if not math.isfinite(request_timeout) or request_timeout <= 0:
+            raise ValueError("timeout must be positive")
+        if not isinstance(retries, int) or retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        for attempt in range(retries + 1):
             response = None
             try:
                 request = self._client.build_request(
                     method,
                     self._make_url(path),
-                    headers=self._headers,
+                    headers={**self._headers, **(headers or {})},
                     json=body,
-                    timeout=self.timeout,
+                    timeout=request_timeout,
                 )
                 response = await self._client.send(
                     request, stream=stream, follow_redirects=False
                 )
-                if attempt < self.max_retries and (
+                if attempt < retries and (
                     response.status_code == 429
                     or (
                         method == "GET"
@@ -262,7 +280,7 @@ class AsyncHTTPClient(BaseClient):
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
                     await response.aclose()
-                if method == "GET" and attempt < self.max_retries:
+                if method == "GET" and attempt < retries:
                     await asyncio.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):
