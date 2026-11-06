@@ -28,6 +28,7 @@ def session_server():
         "failure": 0,
         "mode": "complete",
         "transport": "websocket",
+        "capability": None,
         "bodies": [],
         "tokens": [],
         "paths": [],
@@ -95,6 +96,8 @@ def session_server():
                 state["transport"] = json.loads(body)["transport"]
                 return self.send_json({"data": session()}, 201)
             if self.path.endswith("/connect"):
+                if state["capability"] is not None:
+                    return self.send_json({"data": state["capability"]}, 201)
                 common = {
                     "transport": state["transport"],
                     "session_id": id,
@@ -225,6 +228,65 @@ def test_session_control_and_no_automatic_paid_retry(session_server):
             )
         assert error.value.client_request_id == request_id
         assert state["posts"] == before + 1
+
+
+@pytest.mark.asyncio
+async def test_capability_signaling_variants_and_unknown_protocols(session_server):
+    id, state, options = session_server
+    rtc = {
+        "transport": "webrtc",
+        "signaling": "websocket",
+        "protocol": "rtc-signaling-v1",
+        "session_id": id,
+        "websocket_url": "wss://qcloud.example.test/realtime",
+        "token": "single-use",
+        "expires_at": "2026-11-06T00:00:30Z",
+        "subprotocols": ["qcloud.realtime.v1", "qcloud.cap.single-use"],
+        "encoding": "msgpack",
+    }
+    with QCloud(**options) as client:
+        state["capability"] = rtc
+        capability = client.generation.sessions.connect(id)
+        assert capability.transport == "webrtc" and capability.signaling == "websocket"
+        assert (
+            capability.protocol == "rtc-signaling-v1"
+            and capability.encoding == "msgpack"
+        )
+        assert capability.websocket_url == rtc["websocket_url"]
+        assert "single-use" not in repr(capability)
+        for override in [
+            {"protocol": "unknown"},
+            {"protocol": None},
+            {"encoding": "json"},
+            {"signaling": "unknown"},
+            {"transport": "unknown"},
+            {"websocket_url": ""},
+            {"subprotocols": []},
+            {"session_id": str(uuid4())},
+        ]:
+            state["capability"] = {**rtc, **override}
+            with pytest.raises(APIResponseValidationError):
+                client.generation.sessions.connect(id)
+        state["capability"] = {
+            "transport": "webrtc",
+            "signaling": "sse",
+            "session_id": id,
+            "url": "https://qcloud.example.test/offer",
+            "token": "single-use",
+            "expires_at": rtc["expires_at"],
+        }
+        assert client.generation.sessions.connect(id).signaling == "sse"
+        state["capability"] = {**rtc, "transport": "websocket"}
+        assert client.generation.sessions.connect(id).transport == "websocket"
+    state["capability"] = rtc
+    async with AsyncQCloud(**options) as client:
+        capability = await client.generation.sessions.connect(id)
+        assert (
+            capability.signaling == "websocket"
+            and capability.protocol == "rtc-signaling-v1"
+        )
+        assert "single-use" not in repr(capability)
+    assert state["offers"] == 0
 
 
 def test_session_offer_stream_and_explicit_cleanup(session_server):

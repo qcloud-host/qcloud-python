@@ -21,6 +21,7 @@ from ..types.generation import (
     GenerationSessionConnection,
     GenerationSessionEvent,
     GenerationWebRTCConnection,
+    GenerationWebRTCSignalingConnection,
     GenerationWebSocketConnection,
 )
 
@@ -57,16 +58,28 @@ def _session(value: Any, id: str | None = None) -> GenerationSession:
 
 def _connection(value: Any, id: str) -> GenerationSessionConnection:
     data = _data(value)
-    result = _parse(
-        GenerationWebSocketConnection
-        if data.get("transport") == "websocket"
-        else GenerationWebRTCConnection,
-        data,
-    )
+    result: GenerationSessionConnection
+    if data.get("transport") == "websocket":
+        result = _parse(GenerationWebSocketConnection, data)
+    elif data.get("signaling") == "websocket":
+        result = _parse(GenerationWebRTCSignalingConnection, data)
+    else:
+        result = _parse(GenerationWebRTCConnection, data)
     if result.session_id is not None and result.session_id != id:
         raise APIResponseValidationError("Connection belongs to a different session")
     if not result.token:
         raise APIResponseValidationError("Session capability has no token")
+    if isinstance(
+        result, (GenerationWebSocketConnection, GenerationWebRTCSignalingConnection)
+    ):
+        if (
+            not result.websocket_url
+            or not result.subprotocols
+            or any(not item for item in result.subprotocols)
+        ):
+            raise APIResponseValidationError("Invalid signaling socket capability")
+    elif not result.url:
+        raise APIResponseValidationError("Invalid WebRTC session capability")
     return result
 
 

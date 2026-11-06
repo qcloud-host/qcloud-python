@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenAPI/AsyncAPI reference metadata with separately dated captures and explicit documentation gaps.
+- Typed WebRTC-over-WebSocket capabilities with native protocol validation in sync/async clients.
 - Sync/async session controls, single-use connection capabilities, and WebRTC signaling streams with explicit cleanup.
 - Catalog transport classification and incomplete-schema metadata.
 - Universal generation catalog/schema discovery and durable job submit/status/result/cancel helpers.

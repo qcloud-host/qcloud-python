@@ -45,6 +45,7 @@ from .types.generation import (
     GenerationSessionEvent,
     GenerationSubscription,
     GenerationWebRTCConnection,
+    GenerationWebRTCSignalingConnection,
     GenerationWebSocketConnection,
 )
 
@@ -79,6 +80,7 @@ __all__ = [
     "GenerationSessionEvent",
     "GenerationWebSocketConnection",
     "GenerationWebRTCConnection",
+    "GenerationWebRTCSignalingConnection",
     "GenerationSessionStream",
     "AsyncGenerationSessionStream",
 ]

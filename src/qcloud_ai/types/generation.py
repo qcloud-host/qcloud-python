@@ -16,6 +16,8 @@ class GenerationModel(BaseModel):
     transport: Literal["queue", "websocket", "webrtc", "unknown"]
     queued_available: bool
     schema_available: bool
+    schema_format: Literal["openapi", "asyncapi"] | None = None
+    reference_updated_at: str | None = None
     schema_complete: bool = False
     schema_issues: list[dict[str, Any]] = []
     license: dict[str, Any] | None
@@ -107,6 +109,7 @@ class GenerationSession(BaseModel):
 
 class GenerationWebSocketConnection(BaseModel):
     transport: Literal["websocket"]
+    signaling: Literal["websocket"] = "websocket"
     session_id: str | None = None
     websocket_url: str
     token: str = Field(repr=False)
@@ -118,6 +121,7 @@ class GenerationWebSocketConnection(BaseModel):
 
 class GenerationWebRTCConnection(BaseModel):
     transport: Literal["webrtc"]
+    signaling: Literal["sse"] = "sse"
     session_id: str | None = None
     url: str
     token: str = Field(repr=False)
@@ -125,7 +129,26 @@ class GenerationWebRTCConnection(BaseModel):
     model_config = {"extra": "allow"}
 
 
-GenerationSessionConnection = GenerationWebSocketConnection | GenerationWebRTCConnection
+class GenerationWebRTCSignalingConnection(BaseModel):
+    """A model-specific signaling socket paired with a separate media peer."""
+
+    transport: Literal["webrtc"]
+    signaling: Literal["websocket"]
+    protocol: Literal["rtc-signaling-v1"]
+    session_id: str | None = None
+    websocket_url: str
+    token: str = Field(repr=False)
+    expires_at: str
+    subprotocols: list[str] = Field(repr=False)
+    encoding: Literal["msgpack"]
+    model_config = {"extra": "allow"}
+
+
+GenerationSessionConnection = (
+    GenerationWebSocketConnection
+    | GenerationWebRTCConnection
+    | GenerationWebRTCSignalingConnection
+)
 
 
 class GenerationSessionEvent(BaseModel):
