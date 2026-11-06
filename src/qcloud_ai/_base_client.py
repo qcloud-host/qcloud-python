@@ -3,6 +3,7 @@ import asyncio
 import math
 import os
 import random
+import re
 import time
 from email.utils import parsedate_to_datetime
 from typing import Any, Mapping, TypeVar
@@ -66,6 +67,7 @@ class BaseClient:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        organization: str | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
         default_headers: Mapping[str, str] | None = None,
@@ -103,6 +105,15 @@ class BaseClient:
         if not isinstance(self.max_retries, int) or self.max_retries < 0:
             raise ValueError("max_retries must be a non-negative integer")
         self._custom_headers = dict(default_headers or {})
+        self.organization = (
+            organization
+            if organization is not None
+            else os.environ.get("QCLOUD_ORGANIZATION_ID")
+        )
+        if self.organization and not re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", self.organization
+        ):
+            raise ValueError("organization must be an organization UUID")
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -110,6 +121,11 @@ class BaseClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "User-Agent": f"qcloud-ai-python/{SDK_VERSION}",
+            **(
+                {"X-QCloud-Organization": self.organization}
+                if self.organization
+                else {}
+            ),
             **self._custom_headers,
         }
 
@@ -152,8 +168,14 @@ class SyncHTTPClient(BaseClient):
                     request, stream=stream, follow_redirects=False
                 )
                 if attempt < self.max_retries and (
-                    response.status_code in (408, 409, 429)
-                    or response.status_code >= 500
+                    response.status_code == 429
+                    or (
+                        method == "GET"
+                        and (
+                            response.status_code in (408, 409)
+                            or response.status_code >= 500
+                        )
+                    )
                 ):
                     delay = _retry_delay(response, attempt)
                     response.close()
@@ -166,7 +188,8 @@ class SyncHTTPClient(BaseClient):
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
                     response.close()
-                if attempt < self.max_retries:
+                # An ambiguous POST failure may already have generated billable output.
+                if method == "GET" and attempt < self.max_retries:
                     time.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):
@@ -219,8 +242,14 @@ class AsyncHTTPClient(BaseClient):
                     request, stream=stream, follow_redirects=False
                 )
                 if attempt < self.max_retries and (
-                    response.status_code in (408, 409, 429)
-                    or response.status_code >= 500
+                    response.status_code == 429
+                    or (
+                        method == "GET"
+                        and (
+                            response.status_code in (408, 409)
+                            or response.status_code >= 500
+                        )
+                    )
                 ):
                     delay = _retry_delay(response, attempt)
                     await response.aclose()
@@ -233,7 +262,7 @@ class AsyncHTTPClient(BaseClient):
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
                     await response.aclose()
-                if attempt < self.max_retries:
+                if method == "GET" and attempt < self.max_retries:
                     await asyncio.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):

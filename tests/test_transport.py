@@ -128,13 +128,19 @@ def test_sse_framing_done_and_cleanup():
     assert len(chunks) == 1 and chunks[0].model == "γειά 🌍"
     assert response.is_closed
     response = httpx.Response(200, content=b'data:{"model":"eof"}')
-    assert list(Stream(response, cast=ChatCompletionChunk))[0].model == "eof"
+    stream = Stream(response, cast=ChatCompletionChunk)
+    assert next(stream).model == "eof"
+    with pytest.raises(APIResponseValidationError, match="ended before"):
+        next(stream)
+    assert response.is_closed
 
 
 @pytest.mark.parametrize(
     "payload,exception",
     [
         (b"not-json", APIResponseValidationError),
+        (b"null", APIResponseValidationError),
+        (b"[]", APIResponseValidationError),
         (b'{"error":{"message":"upstream"}}', APIError),
     ],
 )
@@ -158,7 +164,7 @@ async def test_async_retry_error_and_stream(monkeypatch):
     async def handler(r):
         calls.append(r)
         if len(calls) == 1:
-            return httpx.Response(503, json={"error": {}}, headers={"retry-after": "0"})
+            return httpx.Response(429, json={"error": {}}, headers={"retry-after": "0"})
         return httpx.Response(
             200,
             content=b'data:{"model":"test"}\n\ndata:[DONE]\n\n',
@@ -190,6 +196,85 @@ def test_invalid_configuration():
         {"max_retries": -1},
         {"timeout": 0},
         {"base_url": "https://secret@example.com/v1"},
+        {"organization": "not-an-id"},
     ]:
         with pytest.raises(ValueError):
             QCloudAI(api_key="qc-test", **options)
+
+
+@pytest.mark.parametrize("failure", [503, 408, 409, "network"])
+def test_ambiguous_post_not_replayed(failure):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if failure == "network":
+            raise httpx.ReadError("connection reset")
+        return httpx.Response(failure, json={"error": {"message": "failed"}})
+
+    with make(handler, max_retries=2) as c:
+        with pytest.raises(APIConnectionError if failure == "network" else APIError):
+            c.chat.completions.create(**PARAMS)
+    assert len(calls) == 1
+
+
+def test_organization_header():
+    organization = "11111111-1111-4111-8111-111111111111"
+
+    def handler(request):
+        assert request.headers["x-qcloud-organization"] == organization
+        return httpx.Response(200, json={"object": "list", "data": []})
+
+    with make(handler, organization=organization) as c:
+        c.models.list()
+
+
+def test_catalog_get_retries_transient_failure(monkeypatch):
+    monkeypatch.setattr("qcloud_ai._base_client.time.sleep", lambda _: None)
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return (
+            httpx.Response(503, json={"error": {}})
+            if len(calls) == 1
+            else httpx.Response(200, json={"object": "list", "data": []})
+        )
+
+    with make(handler, max_retries=1) as c:
+        assert c.models.list().data == []
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_async_truncation_and_stream_error_request_id():
+    response = httpx.Response(200, content=b'data:{"model":"partial"}\n\n')
+    with pytest.raises(APIResponseValidationError, match="ended before"):
+        [chunk async for chunk in AsyncStream(response, cast=ChatCompletionChunk)]
+    assert response.is_closed
+    response = httpx.Response(
+        200,
+        content=b'data:{"error":{"message":"failed"}}\n\n',
+        headers={"x-request-id": "request-stream"},
+    )
+    with pytest.raises(APIError) as error:
+        [chunk async for chunk in AsyncStream(response, cast=ChatCompletionChunk)]
+    assert error.value.request_id == "request-stream"
+
+
+@pytest.mark.asyncio
+async def test_async_ambiguous_post_not_replayed():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(503, json={"error": {"message": "failed"}})
+
+    async with AsyncQCloudAI(
+        api_key="qc-test",
+        max_retries=2,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    ) as c:
+        with pytest.raises(APIError):
+            await c.chat.completions.create(**PARAMS)
+    assert len(calls) == 1

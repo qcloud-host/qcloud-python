@@ -34,7 +34,9 @@ def _parse(payload: str, cast: type[T]) -> T:
         data: Any = json.loads(payload)
     except ValueError as error:
         raise APIResponseValidationError("Invalid JSON in SSE data") from error
-    if isinstance(data, dict) and "error" in data:
+    if not isinstance(data, dict):
+        raise APIResponseValidationError("Expected an object in SSE data")
+    if "error" in data:
         error = data["error"]
         message = (
             error.get("message", "Streaming error")
@@ -42,7 +44,7 @@ def _parse(payload: str, cast: type[T]) -> T:
             else str(error)
         )
         raise APIError(200, message, body=data)
-    return cast(**data) if isinstance(data, dict) else data
+    return cast(**data)
 
 
 class Stream(Generic[T]):
@@ -71,8 +73,15 @@ class Stream(Generic[T]):
                     return
                 yield _parse(payload, self._cast)
             payload = decoder.feed("")
-            if payload is not None and payload.strip() != "[DONE]":
+            if payload is not None and payload.strip() == "[DONE]":
+                return
+            if payload is not None:
                 yield _parse(payload, self._cast)
+            if not self._closed:
+                raise APIResponseValidationError("The SSE response ended before [DONE]")
+        except APIError as error:
+            error.request_id = self._response.headers.get("x-request-id")
+            raise
         except httpx.TimeoutException as error:
             raise APITimeoutError() from error
         except httpx.TransportError as error:
@@ -118,8 +127,15 @@ class AsyncStream(Generic[T]):
                     return
                 yield _parse(payload, self._cast)
             payload = decoder.feed("")
-            if payload is not None and payload.strip() != "[DONE]":
+            if payload is not None and payload.strip() == "[DONE]":
+                return
+            if payload is not None:
                 yield _parse(payload, self._cast)
+            if not self._closed:
+                raise APIResponseValidationError("The SSE response ended before [DONE]")
+        except APIError as error:
+            error.request_id = self._response.headers.get("x-request-id")
+            raise
         except httpx.TimeoutException as error:
             raise APITimeoutError() from error
         except httpx.TransportError as error:

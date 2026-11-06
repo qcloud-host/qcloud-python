@@ -87,6 +87,8 @@ with QCloud() as client:
     print(result.data[0].embedding)
 ```
 
+Embedding requests accept `dimensions` and `encoding_format` when supported by the selected model. The default float encoding returns a number list; explicitly selecting `base64` returns a string. The backend rejects unsupported routing/add-on options and checks model capabilities before dispatch.
+
 ## Configuration and errors
 
 ```python
@@ -101,7 +103,7 @@ finally:
     client.close()
 ```
 
-`api_key` / `QCLOUD_API_KEY` is required. `base_url` / `QCLOUD_BASE_URL` defaults to `https://www.qcloud.host/api/v1`. `timeout` is a per-network-operation timeout in seconds (default 600). `max_retries` defaults to 2. `default_headers` adds custom headers. `http_client` accepts an `httpx.Client` (or `httpx.AsyncClient` for the async client); closing QCloud also closes that injected client.
+`api_key` / `QCLOUD_API_KEY` is required. `base_url` / `QCLOUD_BASE_URL` defaults to `https://www.qcloud.host/api/v1`. For a separate backend deployment, set the full verified API URL including `/v1`; do not infer the API hostname from the website domain. `organization` / `QCLOUD_ORGANIZATION_ID` selects an organization UUID through `X-QCloud-Organization`; an API key can only select the organization that owns it. `timeout` is a per-network-operation timeout in seconds (default 600). `max_retries` defaults to 2. `default_headers` adds custom headers. `http_client` accepts an `httpx.Client` (or `httpx.AsyncClient` for the async client); closing QCloud also closes that injected client.
 
 Typed errors include authentication, permission, billing, missing-model, rate-limit, connection, timeout, server, and response-validation errors. Responses are Pydantic objects; use `model_dump()` for dictionaries.
 
@@ -145,9 +147,9 @@ Model availability and features are determined by the QCloud catalog and upstrea
 
 ## Reliability
 
-Connection failures, timeouts, HTTP 408/409/429 and 5xx responses are retried twice by default, with backoff and `Retry-After` support. Authentication/billing failures are not retried. Once stream delivery begins, the SDK never replays the request. Retrying a generation may incur duplicate usage if a server processed the first attempt; disable retries for strict single-attempt behavior.
+Read-only GET requests retry connection failures, timeouts, HTTP 408/409/429 and 5xx responses up to twice, with backoff and `Retry-After` support. Inference POST requests retry only HTTP 429 rejections. An ambiguous connection failure, timeout or server error is surfaced without replaying a potentially billable generation. Authentication/billing failures and started streams are never retried. Set `max_retries=0` to disable all retries. A manual retry after an ambiguous failure may incur duplicate usage.
 
-Streaming handles fragmented UTF-8, CRLF/LF events, multiple data lines, error payloads, and `[DONE]`. HTTP errors are checked before returning a stream. Invalid JSON or an HTML response from a misconfigured endpoint produces a typed error.
+Streaming handles fragmented UTF-8, CRLF/LF events, multiple data lines, error payloads, and `[DONE]`. A connection ending without `[DONE]` raises a response-validation error instead of reporting a truncated response as complete. HTTP errors are checked before returning a stream; HTTP and streamed API errors retain the server request ID. Invalid JSON or an HTML response from a misconfigured endpoint produces a typed error.
 
 ## Security and support
 

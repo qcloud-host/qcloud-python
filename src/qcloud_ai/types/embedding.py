@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class Embedding(BaseModel):
     object: str = "embedding"
     index: int = 0
-    embedding: List[float] = Field(default_factory=list)
+    embedding: List[float] | str = Field(default_factory=list)
 
     model_config = {"extra": "allow"}
 
