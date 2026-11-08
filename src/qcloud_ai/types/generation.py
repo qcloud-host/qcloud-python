@@ -5,6 +5,19 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, Field
 
 
+class GenerationUploadedFile(BaseModel):
+    """Private input reference; QCloud resolves it for an authorized model job."""
+    id: str
+    object: Literal["generation.file"]
+    url: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    created_at: str
+    expires_at: str
+
+
 class GenerationModel(BaseModel):
     id: str
     object: Literal["generation.model"]

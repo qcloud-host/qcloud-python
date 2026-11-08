@@ -153,6 +153,10 @@ AsyncClientT = TypeVar("AsyncClientT", bound="AsyncHTTPClient")
 
 
 class SyncHTTPClient(BaseClient):
+    def _upload(self, source: Any, **options: Any):
+        from ._uploads import upload_file
+        return upload_file(self._client, self.base_url, self._headers, source, **options)
+
     def __init__(
         self, *, http_client: httpx.Client | None = None, **kwargs: Any
     ) -> None:
@@ -244,6 +248,10 @@ class SyncHTTPClient(BaseClient):
 
 
 class AsyncHTTPClient(BaseClient):
+    async def _upload(self, source: Any, **options: Any):
+        from ._uploads import async_upload_file
+        return await async_upload_file(self._client, self.base_url, self._headers, source, **options)
+
     def __init__(
         self, *, http_client: httpx.AsyncClient | None = None, **kwargs: Any
     ) -> None:

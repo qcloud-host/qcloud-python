@@ -5,6 +5,8 @@ import re
 from .._base_client import AsyncHTTPClient, SyncHTTPClient
 from .._downloads import AsyncGenerationFile, GenerationFile, MAX_DOWNLOAD_BYTES
 from .._uuid import normalize_uuid
+from .._uploads import UploadSource, AsyncUploadSource, MAX_UPLOAD_BYTES
+from ..types.generation import GenerationUploadedFile
 
 
 def _options(job_id: str, asset_id: str, max_bytes: int, byte_range: str | None) -> tuple[str, str, dict[str, str]]:
@@ -27,6 +29,12 @@ class GenerationFiles:
     def __init__(self, client: SyncHTTPClient) -> None:
         self._client = client
 
+    def upload(self, source: UploadSource, *, filename: str | None = None,
+               content_type: str = "application/octet-stream", size: int | None = None,
+               max_bytes: int = MAX_UPLOAD_BYTES, timeout: float = 120) -> GenerationUploadedFile:
+        return self._client._upload(source, filename=filename, content_type=content_type,
+                                    size=size, max_bytes=max_bytes, timeout=timeout)
+
     def download(self, job_id: str, asset_id: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES,
                  byte_range: str | None = None, timeout: float | None = None) -> GenerationFile:
         job_id, asset_id, headers = _options(job_id, asset_id, max_bytes, byte_range)
@@ -42,6 +50,12 @@ class GenerationFiles:
 class AsyncGenerationFiles:
     def __init__(self, client: AsyncHTTPClient) -> None:
         self._client = client
+
+    async def upload(self, source: AsyncUploadSource, *, filename: str | None = None,
+                     content_type: str = "application/octet-stream", size: int | None = None,
+                     max_bytes: int = MAX_UPLOAD_BYTES, timeout: float = 120) -> GenerationUploadedFile:
+        return await self._client._upload(source, filename=filename, content_type=content_type,
+                                          size=size, max_bytes=max_bytes, timeout=timeout)
 
     async def download(self, job_id: str, asset_id: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES,
                        byte_range: str | None = None, timeout: float | None = None) -> AsyncGenerationFile:

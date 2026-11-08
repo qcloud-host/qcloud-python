@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sync/async local input uploads with bounded streaming, private generation references, verified size/hash receipts and no retries.
+
 - Sync/async generated-file downloads with bounded binary streaming, byte ranges, context-managed cleanup and no automatic retries or file writes.
 
 - OpenAPI/AsyncAPI reference metadata with separately dated captures and explicit documentation gaps.

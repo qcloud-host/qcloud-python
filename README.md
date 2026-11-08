@@ -174,6 +174,55 @@ the async client additionally enforces a wall-clock deadline across the request.
 `result(id)` returns `GenerationResult` or `GenerationPendingResult`.
 New catalog models do not require an SDK update.
 
+### Upload local model inputs
+
+```python
+from pathlib import Path
+
+with QCloud() as client:
+    input_file = client.generation.files.upload(
+        Path("input.png"), content_type="image/png", max_bytes=32 * 1024 * 1024,
+    )
+    # Use the reference in the field required by your chosen model's schema.
+    model_input = {"image_url": input_file.url}
+```
+
+The sync client accepts bytes, paths, binary file handles, or iterables of bytes.
+`await async_client.generation.files.upload(...)` accepts bytes, paths, or async
+byte iterables. URLs and nonregular paths are rejected. Byte/stream inputs use
+`filename="upload.bin"` unless you supply a basename; `content_type` is a bare
+MIME type, normalized to lowercase and defaulting to `application/octet-stream`.
+Transfers use chunks of at
+most 64 KiB and verify the returned size and SHA-256 without buffering the whole
+file. SDK-opened paths are closed on exit; caller-owned binary handles stay
+open. Consumed generators are closed and should cooperate with cancellation.
+Async caller cleanup hooks receive up to 50 ms of grace after the request's
+deadline, then cancellation. At most 32 unfinished hooks are retained across
+clients; further caller hooks are skipped until capacity is available. Hooks
+that suppress cancellation can remain in the background and delay event-loop
+shutdown. Python cannot forcibly stop source iteration or cleanup code that
+suppresses cancellation or blocks the event loop, so this is not a hard deadline
+for the entire process. SDK-owned files are still closed independently.
+
+`max_bytes` defaults to 256 MiB, while the server may apply a lower limit
+(default 64 MiB). `size` optionally declares an exact stream length. The default
+`timeout=120` is in seconds: sync uses HTTPX's per-network-operation timeout;
+async additionally enforces a total deadline and supports task cancellation.
+Uploads never retry, including after partial delivery. A lost response may have
+left an uploaded file; do not assume failure means nothing was stored.
+
+The `GenerationUploadedFile` receipt contains `id`, `url`, `filename`,
+`content_type`, `size_bytes`, `sha256`, `created_at`, and `expires_at`.
+Its `qcloud://files/<UUID>` URL is an opaque private input reference resolved by
+QCloud for your organization during model dispatch. It is not a browser URL or
+a provider credential. Expiry limits the QCloud reference's lifetime, not a
+guarantee of physical deletion from upstream storage. The backend must enable
+uploads and your key needs `generation:invoke`. Uploading does not submit a job
+or enable model execution.
+Underlying processing storage uses unguessable, publicly readable CDN links.
+Private QCloud references and access checks do not make those objects private;
+anyone who obtains an upstream link can read its file.
+
 ### Download generated files
 
 Generated media URLs require your QCloud key. Pass the job UUID and the final

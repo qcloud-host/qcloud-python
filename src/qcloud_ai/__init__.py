@@ -35,6 +35,7 @@ from .resources.generation_sessions import (
     GenerationSessionStream,
 )
 from .types.generation import (
+    GenerationUploadedFile,
     GenerationBilling,
     GenerationJob,
     GenerationModel,
@@ -86,6 +87,7 @@ __all__ = [
     "AsyncGenerationSessionStream",
     "GenerationFile",
     "AsyncGenerationFile",
+    "GenerationUploadedFile",
 ]
 
 QCloud = QCloudAI
