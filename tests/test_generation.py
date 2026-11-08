@@ -19,6 +19,27 @@ from qcloud_ai import (
 )
 
 MODEL = "qcloud/test/nested"
+
+
+def test_model_reference_provenance_types_preserve_old_and_retained_snapshots():
+    from qcloud_ai.types.generation import GenerationModel, GenerationModelList
+    from pydantic import ValidationError
+
+    legacy = dict(id=MODEL, object="generation.model", display_name="Example", category="image", description="Created by Example Studio",
+                  status="active", available=False, transport="queue", queued_available=False, schema_available=True,
+                  license={"attribution": "Preserve creator credit"}, updated_at="2026-11-08T10:00:00Z", schema_url="/model/schema")
+    assert GenerationModel.model_validate(legacy).reference_status is None
+    retained = {**legacy, "reference_status": "retained", "reference_stale": True, "reference_checked_at": "2026-11-08T10:00:00Z",
+                "reference_updated_at": "2026-11-01T10:00:00Z", "reference_issue": "upstream_reference_unavailable"}
+    parsed = GenerationModelList.model_validate(dict(object="list", data=[retained], has_more=False, next_cursor=None,
+                   catalog={"degraded": True, "quarantined_count": 1, "stale": False, "total": 1}))
+    assert parsed.data[0].reference_updated_at == retained["reference_updated_at"]
+    assert parsed.data[0].reference_stale and parsed.data[0].license == legacy["license"]
+    assert parsed.catalog["degraded"] is True and parsed.catalog["quarantined_count"] == 1
+    with pytest.raises(ValidationError):
+        GenerationModel.model_validate({**legacy, "reference_status": "freshly-guessed"})
+
+
 BILLING = {
     "mode": "metered",
     "status": "settled",

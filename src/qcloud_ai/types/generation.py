@@ -30,7 +30,12 @@ class GenerationModel(BaseModel):
     queued_available: bool
     schema_available: bool
     schema_format: Literal["openapi", "asyncapi"] | None = None
+    # None preserves compatibility with older snapshots; it is not proof of freshness.
+    reference_status: Literal["current", "retained", "unavailable"] | None = None
+    reference_stale: bool | None = None
+    reference_checked_at: str | None = None
     reference_updated_at: str | None = None
+    reference_issue: Literal["upstream_reference_unavailable"] | None = None
     schema_complete: bool = False
     schema_issues: list[dict[str, Any]] = []
     license: dict[str, Any] | None
@@ -45,6 +50,7 @@ class GenerationModelList(BaseModel):
     data: list[GenerationModel]
     has_more: bool
     next_cursor: str | None
+    # Includes degraded and quarantined_count on servers with reference provenance.
     catalog: dict[str, Any]
     model_config = {"extra": "allow"}
 
