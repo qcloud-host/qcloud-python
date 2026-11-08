@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import codecs
 import json
+import re
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Literal, TypeVar
 from uuid import uuid4
@@ -129,6 +132,41 @@ def _offer(sdp: str, type: str, token: str) -> dict[str, str]:
     return {"type": "offer", "sdp": sdp}
 
 
+_MAX_SESSION_EVENT_BYTES = 2_097_152
+_SESSION_NEWLINE = re.compile(r"\r\n|\r|\n")
+
+
+class _SessionLines:
+    """Bound framing before parsing lines, including newline-free responses."""
+
+    def __init__(self) -> None:
+        self._decoder = codecs.getincrementaldecoder("utf-8")("strict")
+        self._buffer = ""
+
+    def feed(self, chunk: bytes, *, final: bool = False) -> Iterator[str]:
+        # Keep parser-owned copies bounded even with a custom transport that
+        # supplies a single large chunk. The source chunk remains caller-owned.
+        pieces = (memoryview(chunk)[offset : offset + 65_536] for offset in range(0, len(chunk), 65_536))
+        for piece in (pieces if not final else (b"",)):
+            try:
+                self._buffer += self._decoder.decode(piece, final=final)
+            except UnicodeDecodeError as error:
+                raise APIResponseValidationError("Invalid UTF-8 in session stream") from error
+            while match := _SESSION_NEWLINE.search(self._buffer):
+                if not final and match.group() == "\r" and match.end() == len(self._buffer):
+                    break
+                line = self._buffer[: match.start()]
+                if len(line.encode("utf-8")) > _MAX_SESSION_EVENT_BYTES:
+                    raise APIResponseValidationError("Session event exceeds the size limit")
+                self._buffer = self._buffer[match.end() :]
+                yield line
+            if len(self._buffer.encode("utf-8")) > _MAX_SESSION_EVENT_BYTES + int(self._buffer.endswith("\r")):
+                raise APIResponseValidationError("Session event exceeds the size limit")
+        if final and self._buffer:
+            yield self._buffer
+            self._buffer = ""
+
+
 class _SessionDecoder:
     def __init__(self, id: str) -> None:
         self.id, self.event, self.data, self.size, self.answered = id, "", [], 0, False
@@ -176,11 +214,14 @@ class _SessionDecoder:
             return GenerationSessionEvent(event=event, data=value)
         if line == "data" or line.startswith("data:"):
             part = line[5:]
-            self.data.append(part[1:] if part.startswith(" ") else part)
-            self.size += len(part)
+            part = part[1:] if part.startswith(" ") else part
+            self.size += len(part.encode("utf-8")) + bool(self.data)
+            if self.size > _MAX_SESSION_EVENT_BYTES:
+                raise APIResponseValidationError("Session event exceeds the size limit")
+            self.data.append(part)
         elif line.startswith("event:"):
             self.event = line[6:].removeprefix(" ")
-        if self.size > 2_097_152 or len(line) > 2_097_152:
+        if self.size > _MAX_SESSION_EVENT_BYTES or len(line.encode("utf-8")) > _MAX_SESSION_EVENT_BYTES:
             raise APIResponseValidationError("Session event exceeds the size limit")
         return None
 
@@ -198,8 +239,20 @@ class GenerationSessionStream:
 
     def _events(self) -> Iterator[GenerationSessionEvent]:
         decoder = _SessionDecoder(self.session_id)
+        lines = _SessionLines()
         try:
-            for line in self._response.iter_lines():
+            for chunk in self._response.iter_bytes():
+                if self._closed:
+                    return
+                for line in lines.feed(chunk):
+                    if self._closed:
+                        return
+                    event = decoder.feed(line)
+                    if event is not None:
+                        yield event
+                        if event.event == "closed":
+                            return
+            for line in lines.feed(b"", final=True):
                 if self._closed:
                     return
                 event = decoder.feed(line)
@@ -246,12 +299,32 @@ class AsyncGenerationSessionStream:
 
     async def _events(self) -> AsyncIterator[GenerationSessionEvent]:
         decoder = _SessionDecoder(self.session_id)
+        lines = _SessionLines()
         try:
-            async for line in self._response.aiter_lines():
+            async for chunk in self._response.aiter_bytes():
+                if self._closed:
+                    return
+                for line in lines.feed(chunk):
+                    if self._closed:
+                        return
+                    event = decoder.feed(line)
+                    if event is not None:
+                        # Buffered lines otherwise contain no suspension point;
+                        # deliver task cancellation before exposing another event.
+                        await asyncio.sleep(0)
+                        if self._closed:
+                            return
+                        yield event
+                        if event.event == "closed":
+                            return
+            for line in lines.feed(b"", final=True):
                 if self._closed:
                     return
                 event = decoder.feed(line)
                 if event is not None:
+                    await asyncio.sleep(0)
+                    if self._closed:
+                        return
                     yield event
                     if event.event == "closed":
                         return

@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
 
 import pytest
+import httpx
 
 from qcloud_ai import (
     APIError,
@@ -16,6 +17,159 @@ from qcloud_ai import (
     AsyncQCloud,
     QCloud,
 )
+
+
+class BufferedSessionBody(httpx.SyncByteStream, httpx.AsyncByteStream):
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.reads = 0
+        self.closed = 0
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            self.reads += 1
+            yield chunk
+
+    async def __aiter__(self):
+        for chunk in self:
+            yield chunk
+
+    def close(self):
+        self.closed += 1
+
+    async def aclose(self):
+        self.close()
+
+
+def buffered_session(id):
+    answer = {"session_id": id, "type": "answer", "sdp": "v=0\r\ns=🌍"}
+    closed = {"session_id": id, "reason": "session_finished"}
+    return f"event: answer\ndata: {json.dumps(answer, ensure_ascii=False)}\n\nevent: closed\ndata: {json.dumps(closed)}\n\n".encode()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("mode", ["no-newline", "unicode", "multiline", "invalid-utf8", "truncated-utf8"])
+async def test_session_decoder_bounds_raw_bytes_before_line_or_eof(asynchronous, mode):
+    id = str(uuid4())
+
+    def chunks():
+        if mode == "no-newline":
+            for _ in range(34):
+                yield b"x" * 65_536
+            pytest.fail("The SDK must reject before asking for an unbounded line")
+        elif mode == "unicode":
+            yield ("data: " + "世" * 750_000 + "\n\n").encode()
+        elif mode == "multiline":
+            yield ("data: " + "世" * 360_000 + "\ndata: " + "世" * 360_000 + "\n\n").encode()
+        elif mode == "invalid-utf8":
+            yield buffered_session(id).replace("🌍".encode(), b"\xff")
+        else:
+            yield b"\xe2"
+            yield b"\x82"
+
+    body, requests = BufferedSessionBody(chunks()), []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=body)
+
+    http = (httpx.AsyncClient if asynchronous else httpx.Client)(transport=httpx.MockTransport(respond))
+    sdk = (AsyncQCloud if asynchronous else QCloud)(api_key="qc-fixture", http_client=http)
+    match = "UTF-8" if "utf8" in mode else "size limit"
+    try:
+        with pytest.raises(APIResponseValidationError, match=match):
+            if asynchronous:
+                stream = await sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use")
+                async with stream:
+                    async for _ in stream:
+                        pytest.fail("Malformed session data must not produce an event")
+            else:
+                with sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use") as stream:
+                    for _ in stream:
+                        pytest.fail("Malformed session data must not produce an event")
+        assert len(requests) == 1
+        assert body.closed == 1
+        if mode == "no-newline":
+            assert body.reads == 33
+    finally:
+        if asynchronous:
+            await sdk.close()
+        else:
+            sdk.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_buffered_session_close_does_not_deliver_another_event(asynchronous):
+    id = str(uuid4())
+    body = BufferedSessionBody([buffered_session(id)])
+    http = (httpx.AsyncClient if asynchronous else httpx.Client)(transport=httpx.MockTransport(lambda _: httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=body)))
+    sdk = (AsyncQCloud if asynchronous else QCloud)(api_key="qc-fixture", http_client=http)
+    try:
+        if asynchronous:
+            stream = await sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use")
+            assert (await anext(stream)).event == "answer"
+            await stream.close()
+            with pytest.raises(StopAsyncIteration):
+                await anext(stream)
+        else:
+            stream = sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use")
+            assert next(stream).event == "answer"
+            stream.close()
+            with pytest.raises(StopIteration):
+                next(stream)
+        assert body.closed == 1
+    finally:
+        if asynchronous:
+            await sdk.close()
+        else:
+            sdk.close()
+
+
+@pytest.mark.asyncio
+async def test_buffered_async_session_observes_task_cancellation_before_next_event():
+    id = str(uuid4())
+    body = BufferedSessionBody([buffered_session(id)])
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=body))
+    async with AsyncQCloud(api_key="qc-fixture", http_client=httpx.AsyncClient(transport=transport)) as sdk:
+        stream = await sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use")
+
+        async def consume():
+            assert (await anext(stream)).event == "answer"
+            asyncio.current_task().cancel()
+            await anext(stream)
+            pytest.fail("A buffered event must not bypass cancellation")
+
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.create_task(consume())
+        assert body.closed == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_session_limits_apply_per_line_not_to_the_whole_stream(asynchronous):
+    id = str(uuid4())
+    # More than 2 MiB in a single transport chunk, but each line is bounded.
+    body = BufferedSessionBody([(b":" + b"x" * 65_000 + b"\r\n") * 50 + buffered_session(id)])
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=body))
+    http = (httpx.AsyncClient if asynchronous else httpx.Client)(transport=transport)
+    sdk = (AsyncQCloud if asynchronous else QCloud)(api_key="qc-fixture", http_client=http)
+    try:
+        if asynchronous:
+            async with await sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use") as stream:
+                events = [event async for event in stream]
+        else:
+            with sdk.generation.sessions.offer(id, sdp="v=0", session_token="single-use") as stream:
+                events = list(stream)
+        assert [event.event for event in events] == ["answer", "closed"]
+        assert events[0].data["sdp"] == "v=0\r\ns=🌍"
+        assert body.closed == 1
+    finally:
+        if asynchronous:
+            await sdk.close()
+        else:
+            sdk.close()
 
 
 @pytest.fixture
