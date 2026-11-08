@@ -174,6 +174,45 @@ the async client additionally enforces a wall-clock deadline across the request.
 `result(id)` returns `GenerationResult` or `GenerationPendingResult`.
 New catalog models do not require an SDK update.
 
+### Download generated files
+
+Generated media URLs require your QCloud key. Pass the job UUID and the final
+asset UUID in that URL to `client.generation.files.download(job_id, asset_id)`.
+The SDK builds a route on its configured API origin, never fetching an arbitrary
+returned URL or following redirects with your key.
+
+```python
+from urllib.parse import urlsplit
+
+# This model's result contains images[].url. Other model schemas may differ.
+result = completed.result
+asset_id = urlsplit(result.data["images"][0]["url"]).path.rsplit("/", 1)[-1]
+job_id = result.job_id
+with client.generation.files.download(
+    job_id, asset_id, max_bytes=64 * 1024 * 1024, timeout=120
+) as file:
+    # xb refuses to overwrite an existing file. Choose the path yourself.
+    with open("output.bin", "xb") as output:
+        for chunk in file:
+            output.write(chunk)
+```
+
+The async client uses `async with await client.generation.files.download(...)`
+and `async for chunk in file`. Always use the context manager, including when
+stopping early. Async task cancellation and network errors close the response;
+`close()` is also available (await it on an async file).
+
+Each single-use download yields binary chunks of at most 64 KiB and exposes
+`content_type`, `content_length`, `content_range`, `accept_ranges`, `status_code`,
+`request_id`, and `bytes_read`. It does not select a filename or write files.
+`max_bytes` defaults to 256 MiB and can be lowered. `byte_range="bytes=0-1023"`
+requests one range; inspect status and range metadata because a server can ignore
+the range. As with other Python requests, `timeout` is seconds per network
+operation, not a complete-download wall-clock deadline. Use your application's
+async timeout when you also need a total deadline. Downloads never retry,
+including after partial delivery. Caller-owned output may contain a partial file
+on failure; decide whether to retain or remove it.
+
 `client.generation.sessions.create/retrieve/connect/close` manage explicitly
 enabled WebSocket/WebRTC sessions. Creation requires metered consent, transport,
 and a stable UUID; `max_duration_seconds` defaults to 300. `connect` returns a
@@ -204,6 +243,7 @@ from catalog presence.
 | Embeddings                                       | Create embeddings with a supported model                    |
 | Legacy Completions                               | Available when the selected provider/model supports it      |
 | Generation models and jobs                      | Schema discovery, arbitrary JSON, durable jobs and polling |
+| Generated files                                 | Authenticated binary streaming and single byte ranges       |
 | OpenAI Responses, files, audio, realtime         | Not exposed by this SDK/backend release                     |
 | Anthropic Messages                              | Backend compatibility endpoint; use the official Anthropic client |
 

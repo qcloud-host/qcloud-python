@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sync/async generated-file downloads with bounded binary streaming, byte ranges, context-managed cleanup and no automatic retries or file writes.
+
 - OpenAPI/AsyncAPI reference metadata with separately dated captures and explicit documentation gaps.
 - Typed WebRTC-over-WebSocket capabilities with native protocol validation in sync/async clients.
 - Sync/async session controls, single-use connection capabilities, and WebRTC signaling streams with explicit cleanup.

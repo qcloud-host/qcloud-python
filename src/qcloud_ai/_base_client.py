@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import json
 import math
 import os
 import random
@@ -38,7 +39,19 @@ def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
     return min(0.5 * 2**attempt, 8) * (0.75 + random.random() * 0.25)
 
 
-def _validate_response(response: httpx.Response, stream: bool) -> None:
+def _binary_error(response: httpx.Response, raw: bytes) -> None:
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        data = {"error": {"message": raw.decode("utf-8", errors="replace")[:500] or response.reason_phrase}}
+    try:
+        _raise_for_status(response.status_code, data)
+    except APIError as error:
+        error.request_id = response.headers.get("x-request-id")
+        raise
+
+
+def _validate_response(response: httpx.Response, stream: bool, binary: bool = False) -> None:
     if not 200 <= response.status_code < 300:
         try:
             data = response.json()
@@ -49,6 +62,8 @@ def _validate_response(response: httpx.Response, stream: bool) -> None:
         except APIError as error:
             error.request_id = response.headers.get("x-request-id")
             raise
+    if binary:
+        return
     if stream:
         if "text/event-stream" not in response.headers.get("content-type", ""):
             raise APIResponseValidationError(
@@ -153,6 +168,7 @@ class SyncHTTPClient(BaseClient):
         *,
         body: dict[str, Any] | None = None,
         stream: bool = False,
+        binary: bool = False,
         timeout: float | None = None,
         max_retries: int | None = None,
         headers: Mapping[str, str] | None = None,
@@ -174,7 +190,7 @@ class SyncHTTPClient(BaseClient):
                     timeout=request_timeout,
                 )
                 response = self._client.send(
-                    request, stream=stream, follow_redirects=False
+                    request, stream=stream or binary, follow_redirects=False
                 )
                 if attempt < retries and (
                     response.status_code == 429
@@ -191,8 +207,15 @@ class SyncHTTPClient(BaseClient):
                     time.sleep(delay)
                     continue
                 if not 200 <= response.status_code < 300:
+                    if binary:
+                        raw = bytearray()
+                        for chunk in response.iter_raw(chunk_size=65536):
+                            raw.extend(chunk[:65536 - len(raw)])
+                            if len(raw) >= 65536:
+                                break
+                        _binary_error(response, bytes(raw))
                     response.read()
-                _validate_response(response, stream)
+                _validate_response(response, stream, binary)
                 return response
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
@@ -236,6 +259,7 @@ class AsyncHTTPClient(BaseClient):
         *,
         body: dict[str, Any] | None = None,
         stream: bool = False,
+        binary: bool = False,
         timeout: float | None = None,
         max_retries: int | None = None,
         headers: Mapping[str, str] | None = None,
@@ -257,7 +281,7 @@ class AsyncHTTPClient(BaseClient):
                     timeout=request_timeout,
                 )
                 response = await self._client.send(
-                    request, stream=stream, follow_redirects=False
+                    request, stream=stream or binary, follow_redirects=False
                 )
                 if attempt < retries and (
                     response.status_code == 429
@@ -274,8 +298,15 @@ class AsyncHTTPClient(BaseClient):
                     await asyncio.sleep(delay)
                     continue
                 if not 200 <= response.status_code < 300:
+                    if binary:
+                        raw = bytearray()
+                        async for chunk in response.aiter_raw(chunk_size=65536):
+                            raw.extend(chunk[:65536 - len(raw)])
+                            if len(raw) >= 65536:
+                                break
+                        _binary_error(response, bytes(raw))
                     await response.aread()
-                _validate_response(response, stream)
+                _validate_response(response, stream, binary)
                 return response
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:

@@ -15,6 +15,7 @@ Usage::
 from ._async_client import AsyncQCloudAI
 from ._base_client import SDK_VERSION as __version__
 from ._client import QCloudAI
+from ._downloads import GenerationFile, AsyncGenerationFile
 from ._exceptions import (
     APIConnectionError,
     APIError,
@@ -83,6 +84,8 @@ __all__ = [
     "GenerationWebRTCSignalingConnection",
     "GenerationSessionStream",
     "AsyncGenerationSessionStream",
+    "GenerationFile",
+    "AsyncGenerationFile",
 ]
 
 QCloud = QCloudAI

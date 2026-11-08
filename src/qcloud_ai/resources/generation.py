@@ -528,13 +528,17 @@ class AsyncGenerationJobs:
 
 class Generation:
     def __init__(self, client: SyncHTTPClient) -> None:
+        from .generation_files import GenerationFiles
         self.models = GenerationModels(client)
         self.jobs = GenerationJobs(client)
         self.sessions = GenerationSessions(client)
+        self.files = GenerationFiles(client)
 
 
 class AsyncGeneration:
     def __init__(self, client: AsyncHTTPClient) -> None:
+        from .generation_files import AsyncGenerationFiles
         self.models = AsyncGenerationModels(client)
         self.jobs = AsyncGenerationJobs(client)
         self.sessions = AsyncGenerationSessions(client)
+        self.files = AsyncGenerationFiles(client)
