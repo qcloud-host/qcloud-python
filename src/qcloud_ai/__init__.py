@@ -16,6 +16,7 @@ from ._async_client import AsyncQCloudAI
 from ._base_client import SDK_VERSION as __version__
 from ._client import QCloudAI
 from ._downloads import GenerationFile, AsyncGenerationFile
+from .types.serverless import QueueCatalog, QueueDeployment, QueueDeploymentList, QueueLimits, QueueProfile
 from ._exceptions import (
     APIConnectionError,
     APIError,
@@ -52,6 +53,7 @@ from .types.generation import (
 )
 
 __all__ = [
+    "QueueCatalog", "QueueDeployment", "QueueDeploymentList", "QueueLimits", "QueueProfile",
     "__version__",
     "QCloudAI",
     "AsyncQCloudAI",

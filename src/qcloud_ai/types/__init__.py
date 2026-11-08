@@ -6,6 +6,7 @@ from .chat import (
     ChatCompletionChunkChoice,
     ChatCompletionChunkDelta,
 )
+from .serverless import QueueCatalog, QueueDeployment, QueueDeploymentList, QueueLimits, QueueProfile
 from .completion import (
     Completion,
     CompletionChoice,
@@ -23,6 +24,7 @@ from .model import (
 )
 
 __all__ = [
+    "QueueCatalog", "QueueDeployment", "QueueDeploymentList", "QueueLimits", "QueueProfile",
     "ChatCompletion",
     "ChatCompletionChunk",
     "ChatCompletionMessage",

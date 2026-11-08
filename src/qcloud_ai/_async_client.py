@@ -10,6 +10,7 @@ from .resources.completions import AsyncCompletions
 from .resources.embeddings import AsyncEmbeddings
 from .resources.models import AsyncModels
 from .resources.generation import AsyncGeneration
+from .resources.serverless import AsyncServerless
 
 
 class AsyncQCloudAI(AsyncHTTPClient):
@@ -32,6 +33,7 @@ class AsyncQCloudAI(AsyncHTTPClient):
     embeddings: AsyncEmbeddings
     models: AsyncModels
     generation: AsyncGeneration
+    serverless: AsyncServerless
 
     def __init__(
         self,
@@ -58,3 +60,4 @@ class AsyncQCloudAI(AsyncHTTPClient):
         self.embeddings = AsyncEmbeddings(self)
         self.models = AsyncModels(self)
         self.generation = AsyncGeneration(self)
+        self.serverless = AsyncServerless(self)

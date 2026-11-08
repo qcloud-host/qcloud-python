@@ -327,6 +327,27 @@ from catalog presence.
 
 Model availability and features are determined by the QCloud catalog and upstream provider. Use the QCloud model ID, which may differ from the provider's public model ID. The backend also supports `/messages` with Anthropic version `2023-06-01` for compatible text, image, and tool requests. This QCloud SDK has no `messages` resource; use the official Anthropic client with `base_url="https://platform.qcloud.host/api"` (it appends `/v1/messages`) and your QCloud key. Beta features and exact token counting are rejected, so this does not promise full Claude Code compatibility. This library is maintained by QCloud and is not an OpenAI or Anthropic product.
 
+## Serverless queue drafts
+
+`client.serverless.queue` saves planning records. It has no launch or job-execution method. A draft creates no endpoint, worker, billing account or charge. The catalog may be empty until an operator publishes reviewed profiles; `runtime_available` remains `False`, and `pricing=None` means unknown, never free.
+
+```python
+from uuid import uuid4
+catalog = client.serverless.queue.catalog()
+if catalog.creation_available:
+    request_id = str(uuid4())  # Persist with your intent before sending.
+    draft = client.serverless.queue.deployments.create(
+        name="My model draft", profile_id=catalog.profiles[0].id,
+        client_request_id=request_id,
+    )
+    print(client.serverless.queue.deployments.retrieve(draft.id))
+    print(client.serverless.queue.deployments.list().data)
+```
+
+`AsyncQCloud` exposes the same methods; `await` each call. Use a scoped QCloud key: `serverless:read` for catalog/list/retrieve and `serverless:manage` for creation. Optional `org_id` selects only the key's own organization; it cannot grant access to another tenant. Every method accepts an optional `timeout` in seconds; asynchronous calls support normal task cancellation.
+
+Create makes one HTTP attempt, even when client retries are enabled. If omitted, the SDK generates `client_request_id` and attaches it as `error.client_request_id` to typed API, connection and response-validation errors. After an ambiguous response, explicitly reuse that UUID with the identical name, profile and organization; the server returns the same draft. Changed intent or actor with the same UUID conflicts. For durable recovery across process termination, generate and store the UUID yourself before calling. QCloud deployment UUIDs are validated, and typed responses expose only the public draft fields. See [the draft example](examples/queue_draft.py).
+
 ## Reliability
 
 Read-only GET requests retry connection failures, timeouts, HTTP 408/409/429 and 5xx responses up to twice, with backoff and `Retry-After` support. Inference POST requests retry only HTTP 429 rejections. An ambiguous connection failure, timeout or server error is surfaced without replaying a potentially billable generation. Authentication/billing failures and started streams are never retried. Set `max_retries=0` to disable all retries. A manual retry after an ambiguous failure may incur duplicate usage.
