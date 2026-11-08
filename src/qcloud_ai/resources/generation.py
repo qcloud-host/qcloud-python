@@ -7,12 +7,13 @@ import time
 from collections.abc import Callable
 from typing import Any, Literal, TypeVar
 from urllib.parse import quote, urlencode
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
 from .._base_client import AsyncHTTPClient, SyncHTTPClient
 from .._exceptions import APIResponseValidationError, APITimeoutError, QCloudAIError
+from .._uuid import normalize_uuid
 from ..types.generation import (
     GenerationJob,
     GenerationModel,
@@ -73,9 +74,10 @@ def _submission(
         )
     # Preserve primitives, arrays, and nested objects; reject non-JSON/NaN inputs.
     json.dumps(input, allow_nan=False)
-    request_id = client_request_id if client_request_id is not None else str(uuid4())
-    if not isinstance(request_id, str) or str(UUID(request_id)) != request_id.lower():
-        raise ValueError("client_request_id must be a UUID")
+    request_id = normalize_uuid(
+        client_request_id if client_request_id is not None else str(uuid4()),
+        "client_request_id",
+    )
     if timeout_seconds is not None and (
         isinstance(timeout_seconds, bool)
         or not isinstance(timeout_seconds, int)
@@ -267,12 +269,14 @@ class GenerationJobs:
             raise
 
     def retrieve(self, id: str, *, timeout: float | None = None) -> GenerationJob:
+        id = normalize_uuid(id, "job ID")
         response = self._client._request(
             "GET", f"/generation/jobs/{_path(id)}", timeout=timeout, max_retries=0
         )
         return _checked_job(_data(response.json()), id)
 
     def cancel(self, id: str, *, timeout: float | None = None) -> GenerationJob:
+        id = normalize_uuid(id, "job ID")
         response = self._client._request(
             "POST",
             f"/generation/jobs/{_path(id)}/cancel",
@@ -284,6 +288,7 @@ class GenerationJobs:
     def result(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationResult[Any] | GenerationPendingResult:
+        id = normalize_uuid(id, "job ID")
         return _result(
             id,
             self._client._request(
@@ -325,7 +330,7 @@ class GenerationJobs:
         poll_interval: float = 1,
         on_update: Callable[[GenerationJob], None] | None = None,
     ) -> GenerationJob:
-        _path(id)
+        id = normalize_uuid(id, "job ID")
         return self._poll(id, _Deadline(timeout, poll_interval, id), on_update)
 
     def subscribe(
@@ -340,8 +345,9 @@ class GenerationJobs:
         poll_interval: float = 1,
         on_update: Callable[[GenerationJob], None] | None = None,
     ) -> GenerationSubscription[Any]:
-        request_id = (
-            client_request_id if client_request_id is not None else str(uuid4())
+        request_id = normalize_uuid(
+            client_request_id if client_request_id is not None else str(uuid4()),
+            "client_request_id",
         )
         deadline = _Deadline(timeout, poll_interval, request_id=request_id)
         try:
@@ -396,12 +402,14 @@ class AsyncGenerationJobs:
             raise
 
     async def retrieve(self, id: str, *, timeout: float | None = None) -> GenerationJob:
+        id = normalize_uuid(id, "job ID")
         response = await self._client._request(
             "GET", f"/generation/jobs/{_path(id)}", timeout=timeout, max_retries=0
         )
         return _checked_job(_data(response.json()), id)
 
     async def cancel(self, id: str, *, timeout: float | None = None) -> GenerationJob:
+        id = normalize_uuid(id, "job ID")
         response = await self._client._request(
             "POST",
             f"/generation/jobs/{_path(id)}/cancel",
@@ -413,6 +421,7 @@ class AsyncGenerationJobs:
     async def result(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationResult[Any] | GenerationPendingResult:
+        id = normalize_uuid(id, "job ID")
         return _result(
             id,
             (
@@ -471,7 +480,7 @@ class AsyncGenerationJobs:
         poll_interval: float = 1,
         on_update: Callable[[GenerationJob], None] | None = None,
     ) -> GenerationJob:
-        _path(id)
+        id = normalize_uuid(id, "job ID")
         return await self._poll(id, _Deadline(timeout, poll_interval, id), on_update)
 
     async def subscribe(
@@ -486,8 +495,9 @@ class AsyncGenerationJobs:
         poll_interval: float = 1,
         on_update: Callable[[GenerationJob], None] | None = None,
     ) -> GenerationSubscription[Any]:
-        request_id = (
-            client_request_id if client_request_id is not None else str(uuid4())
+        request_id = normalize_uuid(
+            client_request_id if client_request_id is not None else str(uuid4()),
+            "client_request_id",
         )
         deadline = _Deadline(timeout, poll_interval, request_id=request_id)
         submitted = await self._bounded(

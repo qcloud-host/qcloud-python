@@ -16,7 +16,6 @@ from qcloud_ai import (
     AuthenticationError,
     RateLimitError,
 )
-from qcloud_ai._base_client import DEFAULT_BASE_URL
 from qcloud_ai.types.chat import ChatCompletion
 from qcloud_ai.types.completion import Completion
 from qcloud_ai.types.embedding import CreateEmbeddingResponse
@@ -102,7 +101,7 @@ class TestClientInit:
 
     def test_default_base_url(self) -> None:
         client = QCloudAI(api_key="qc-test")
-        assert client.base_url == DEFAULT_BASE_URL
+        assert client.base_url == "https://platform.qcloud.host/api/v1"
 
     def test_env_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("QCLOUD_API_KEY", "qc-from-env")

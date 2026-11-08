@@ -78,6 +78,7 @@ def generation_server():
                 pass
 
         def do_POST(self):
+            state["paths"].append(self.path)
             if self.path.endswith("/cancel"):
                 state["cancels"] += 1
                 self.send_json({"data": job("cancelled")}, 202)
@@ -306,3 +307,68 @@ def test_generation_input_and_response_validation(generation_server):
         generation_server["state"]["mismatch"] = True
         with pytest.raises(APIResponseValidationError):
             sdk.generation.jobs.wait(generation_server["id"], timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_uppercase_job_uuids_preserve_identity(generation_server, asynchronous):
+    id, state = generation_server["id"], generation_server["state"]
+    upper = id.upper()
+    request_id = "ABCDEF12-3456-4789-ABCD-EF1234567890"
+    sdk = (AsyncQCloud if asynchronous else QCloud)(
+        api_key="qc-fixture", base_url=generation_server["url"], timeout=3
+    )
+
+    async def call(method, *args, **kwargs):
+        result = method(*args, **kwargs)
+        return await result if asynchronous else result
+
+    params = dict(model=MODEL, input=None, billing_mode="metered", client_request_id=request_id)
+    try:
+        await call(sdk.generation.jobs.submit, **params)
+        assert state["posts"][0]["client_request_id"] == request_id.lower()
+        assert (await call(sdk.generation.jobs.retrieve, upper)).id == id
+        pending = await call(sdk.generation.jobs.result, upper)
+        assert isinstance(pending, GenerationPendingResult) and pending.data.id == id
+        assert (await call(sdk.generation.jobs.result, upper)).job_id == id
+        assert (await call(sdk.generation.jobs.wait, upper, timeout=2, poll_interval=0.005)).id == id
+        assert (await call(sdk.generation.jobs.cancel, upper)).id == id
+        assert (await call(sdk.generation.jobs.subscribe, **params, timeout=2, poll_interval=0.005)).job.id == id
+        assert all(path.startswith(f"/v1/generation/jobs/{id}") for path in state["paths"] if path != "/v1/generation/jobs")
+        assert all(body["client_request_id"] == request_id.lower() for body in state["posts"])
+        state["failure"] = 503
+        with pytest.raises(APIError) as error:
+            await call(sdk.generation.jobs.submit, **params)
+        assert error.value.client_request_id == request_id.lower()
+        state["mismatch"] = True
+        with pytest.raises(APIResponseValidationError):
+            await call(sdk.generation.jobs.retrieve, upper)
+        with pytest.raises(APIResponseValidationError):
+            await call(sdk.generation.jobs.result, upper)
+    finally:
+        await call(sdk.close)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_malformed_job_uuids_fail_before_http(generation_server, asynchronous):
+    id, state = generation_server["id"], generation_server["state"]
+    sdk = (AsyncQCloud if asynchronous else QCloud)(
+        api_key="qc-fixture", base_url=generation_server["url"]
+    )
+
+    async def call(method, *args, **kwargs):
+        result = method(*args, **kwargs)
+        return await result if asynchronous else result
+
+    try:
+        for invalid in [f"{{{id}}}", id.replace("-", ""), f" {id}", f"{id}\n", f"g{id[1:]}", id[1:]]:
+            for method in [sdk.generation.jobs.retrieve, sdk.generation.jobs.cancel, sdk.generation.jobs.result, sdk.generation.jobs.wait]:
+                with pytest.raises(ValueError, match="UUID"):
+                    await call(method, invalid)
+            for method in [sdk.generation.jobs.submit, sdk.generation.jobs.subscribe]:
+                with pytest.raises(ValueError, match="UUID"):
+                    await call(method, model=MODEL, input=None, billing_mode="metered", client_request_id=invalid)
+        assert state["paths"] == []
+    finally:
+        await call(sdk.close)

@@ -383,3 +383,68 @@ def test_session_invalid_inputs_fail_before_network(session_server):
         with pytest.raises(ValueError):
             client.generation.sessions.retrieve("not-uuid")
         assert state["posts"] == state["offers"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_uppercase_session_uuids_preserve_stream_identity(session_server, asynchronous):
+    id, state, options = session_server
+    upper = id.upper()
+    request_id = "ABCDEF12-3456-4789-ABCD-EF1234567890"
+    sdk = (AsyncQCloud if asynchronous else QCloud)(**options)
+
+    async def call(method, *args, **kwargs):
+        result = method(*args, **kwargs)
+        return await result if asynchronous else result
+
+    async def consume():
+        stream = await call(sdk.generation.sessions.offer, upper, sdp="offer", session_token="single-use")
+        assert stream.session_id == id
+        if asynchronous:
+            async with stream:
+                return [event async for event in stream]
+        with stream:
+            return list(stream)
+
+    params = dict(model="qcloud/session", transport="webrtc", billing_mode="metered", client_request_id=request_id)
+    try:
+        await call(sdk.generation.sessions.create, **params)
+        assert state["bodies"][0]["client_request_id"] == request_id.lower()
+        assert (await call(sdk.generation.sessions.retrieve, upper)).id == id
+        assert (await call(sdk.generation.sessions.connect, upper)).session_id == id
+        assert [event.event for event in await consume()] == ["answer", "closed"]
+        assert (await call(sdk.generation.sessions.close, upper)).id == id
+        assert all(path.startswith(f"/v1/generation/sessions/{id}") for path in state["paths"] if path != "/v1/generation/sessions")
+        state["failure"] = 503
+        with pytest.raises(APIError) as error:
+            await call(sdk.generation.sessions.create, **params)
+        assert error.value.client_request_id == request_id.lower()
+        state["mode"] = "mismatch"
+        with pytest.raises(APIResponseValidationError):
+            await consume()
+    finally:
+        await call(sdk.close)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_malformed_session_uuids_fail_before_http(session_server, asynchronous):
+    id, state, options = session_server
+    sdk = (AsyncQCloud if asynchronous else QCloud)(**options)
+
+    async def call(method, *args, **kwargs):
+        result = method(*args, **kwargs)
+        return await result if asynchronous else result
+
+    try:
+        for invalid in [f"{{{id}}}", id.replace("-", ""), f" {id}", f"{id}\n", f"g{id[1:]}", id[1:]]:
+            for method in [sdk.generation.sessions.retrieve, sdk.generation.sessions.connect, sdk.generation.sessions.close]:
+                with pytest.raises(ValueError, match="UUID"):
+                    await call(method, invalid)
+            with pytest.raises(ValueError, match="UUID"):
+                await call(sdk.generation.sessions.offer, invalid, sdp="offer", session_token="single-use")
+            with pytest.raises(ValueError, match="UUID"):
+                await call(sdk.generation.sessions.create, model="qcloud/session", transport="websocket", billing_mode="metered", client_request_id=invalid)
+        assert state["paths"] == []
+    finally:
+        await call(sdk.close)

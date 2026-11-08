@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Literal, TypeVar
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -16,6 +16,7 @@ from .._exceptions import (
     APITimeoutError,
     QCloudAIError,
 )
+from .._uuid import normalize_uuid
 from ..types.generation import (
     GenerationSession,
     GenerationSessionConnection,
@@ -29,9 +30,7 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 def _id(value: str) -> str:
-    if not isinstance(value, str) or str(UUID(value)) != value.lower():
-        raise ValueError("A session UUID is required")
-    return value
+    return normalize_uuid(value, "session ID")
 
 
 def _parse(model: type[ModelT], value: Any) -> ModelT:
@@ -94,8 +93,9 @@ def _create(
         raise ValueError("A model and supported session transport are required")
     if billing_mode != "metered":
         raise ValueError("billing_mode='metered' is required")
-    request_id = _id(
-        client_request_id if client_request_id is not None else str(uuid4())
+    request_id = normalize_uuid(
+        client_request_id if client_request_id is not None else str(uuid4()),
+        "client_request_id",
     )
     if max_duration_seconds is not None and (
         isinstance(max_duration_seconds, bool)
@@ -313,9 +313,10 @@ class GenerationSessions:
             raise
 
     def retrieve(self, id: str, *, timeout: float | None = None) -> GenerationSession:
+        id = _id(id)
         return _session(
             self._client._request(
-                "GET", f"/generation/sessions/{_id(id)}", timeout=timeout
+                "GET", f"/generation/sessions/{id}", timeout=timeout
             ).json(),
             id,
         )
@@ -323,10 +324,11 @@ class GenerationSessions:
     def connect(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationSessionConnection:
+        id = _id(id)
         return _connection(
             self._client._request(
                 "POST",
-                f"/generation/sessions/{_id(id)}/connect",
+                f"/generation/sessions/{id}/connect",
                 timeout=timeout,
                 max_retries=0,
             ).json(),
@@ -334,10 +336,11 @@ class GenerationSessions:
         )
 
     def close(self, id: str, *, timeout: float | None = None) -> GenerationSession:
+        id = _id(id)
         return _session(
             self._client._request(
                 "POST",
-                f"/generation/sessions/{_id(id)}/close",
+                f"/generation/sessions/{id}/close",
                 timeout=timeout,
                 max_retries=0,
             ).json(),
@@ -353,10 +356,11 @@ class GenerationSessions:
         type: Literal["offer"] = "offer",
         timeout: float | None = None,
     ) -> GenerationSessionStream:
+        id = _id(id)
         body = _offer(sdp, type, session_token)
         response = self._client._request(
             "POST",
-            f"/generation/sessions/{_id(id)}/offer",
+            f"/generation/sessions/{id}/offer",
             body=body,
             headers={"X-QCloud-Session-Token": session_token},
             stream=True,
@@ -402,10 +406,11 @@ class AsyncGenerationSessions:
     async def retrieve(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationSession:
+        id = _id(id)
         return _session(
             (
                 await self._client._request(
-                    "GET", f"/generation/sessions/{_id(id)}", timeout=timeout
+                    "GET", f"/generation/sessions/{id}", timeout=timeout
                 )
             ).json(),
             id,
@@ -414,11 +419,12 @@ class AsyncGenerationSessions:
     async def connect(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationSessionConnection:
+        id = _id(id)
         return _connection(
             (
                 await self._client._request(
                     "POST",
-                    f"/generation/sessions/{_id(id)}/connect",
+                    f"/generation/sessions/{id}/connect",
                     timeout=timeout,
                     max_retries=0,
                 )
@@ -429,11 +435,12 @@ class AsyncGenerationSessions:
     async def close(
         self, id: str, *, timeout: float | None = None
     ) -> GenerationSession:
+        id = _id(id)
         return _session(
             (
                 await self._client._request(
                     "POST",
-                    f"/generation/sessions/{_id(id)}/close",
+                    f"/generation/sessions/{id}/close",
                     timeout=timeout,
                     max_retries=0,
                 )
@@ -450,10 +457,11 @@ class AsyncGenerationSessions:
         type: Literal["offer"] = "offer",
         timeout: float | None = None,
     ) -> AsyncGenerationSessionStream:
+        id = _id(id)
         body = _offer(sdp, type, session_token)
         response = await self._client._request(
             "POST",
-            f"/generation/sessions/{_id(id)}/offer",
+            f"/generation/sessions/{id}/offer",
             body=body,
             headers={"X-QCloud-Session-Token": session_token},
             stream=True,
