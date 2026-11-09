@@ -146,6 +146,14 @@ implying an enabled session route. Check `queued_available` before submitting; W
 WebRTC, and unknown transports require separate session support and cannot run
 through these job helpers.
 
+When present, `model.admission_policy` adds current request restrictions to the
+complete model schema. Follow both: a schema can describe settings the service
+does not currently accept. The policy lists required fields, permitted values
+and whether extra fields are allowed. `model.availability_reason` explains a
+policy restriction. Reservations are review thresholds, not guaranteed spending
+caps; current prices, billing eligibility and account limits are checked at
+submission.
+
 ```python
 import json
 import os

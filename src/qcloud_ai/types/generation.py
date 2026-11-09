@@ -41,6 +41,9 @@ class GenerationModel(BaseModel):
     license: dict[str, Any] | None
     updated_at: str
     pricing: dict[str, Any] | None = None
+    # Additional admission restrictions may be narrower than the model schema.
+    admission_policy: dict[str, Any] | None = None
+    availability_reason: str | None = None
     schema_url: str
     model_config = {"extra": "allow"}
 

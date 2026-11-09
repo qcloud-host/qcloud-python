@@ -29,6 +29,13 @@ def test_model_reference_provenance_types_preserve_old_and_retained_snapshots():
                   status="active", available=False, transport="queue", queued_available=False, schema_available=True,
                   license={"attribution": "Preserve creator credit"}, updated_at="2026-11-08T10:00:00Z", schema_url="/model/schema")
     assert GenerationModel.model_validate(legacy).reference_status is None
+    policy = {"id": "fixture-fixed-image", "fields": {"image_size": {"width": 512, "height": 512}, "num_images": 1},
+              "all_fields_required": True, "additional_fields": False, "reservation_notice": "Review threshold; not a spending cap."}
+    limited = GenerationModel.model_validate({**legacy, "admission_policy": policy, "availability_reason": None})
+    assert limited.admission_policy == policy
+    assert limited.model_dump()["admission_policy"] == policy
+    assert GenerationModel.model_validate({**legacy, "admission_policy": None,
+           "availability_reason": "generation_budget_model_unsupported"}).availability_reason == "generation_budget_model_unsupported"
     retained = {**legacy, "reference_status": "retained", "reference_stale": True, "reference_checked_at": "2026-11-08T10:00:00Z",
                 "reference_updated_at": "2026-11-01T10:00:00Z", "reference_issue": "upstream_reference_unavailable"}
     parsed = GenerationModelList.model_validate(dict(object="list", data=[retained], has_more=False, next_cursor=None,
