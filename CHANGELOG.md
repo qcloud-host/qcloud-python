@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — source candidate, not published to PyPI
+
+- Sync/async queue planning and inactive runtime resources, including quotes bound to one request UUID and exact decimal estimates.
+- Strict resource identity, public response projection and recovery IDs; quote, launch and submission never retry automatically.
+- Optional native WebSocket messages with pinned `websockets`, bounded I/O and explicit session/billing cleanup; no automatic reconnection or media peer support.
+- Clean wheel installation checks exercise sync/async clients and realtime dependencies outside the source tree.
+- Source-only realtime-extra installation and explicit OpenAI/Anthropic compatibility guidance.
 
 - Sync/async local input uploads with bounded streaming, private generation references, verified size/hash receipts and no retries.
 
@@ -16,7 +22,7 @@
 - Typed generation jobs, results, pending results, and terminal-state errors.
 - Local HTTP generation tests and cross-language backend contract coverage.
 
-## 0.2.0
+## 0.2.0 — earlier source baseline
 
 - Backend HTTP contract tests for Python, TypeScript, streaming, cancellation and organization isolation.
 - Explicit organization selection and typed published-model catalog metadata.

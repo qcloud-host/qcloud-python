@@ -10,6 +10,7 @@ from .._base_client import AsyncHTTPClient, SyncHTTPClient
 from .._exceptions import APIResponseValidationError, QCloudAIError
 from .._uuid import normalize_uuid
 from ..types.serverless import QueueCatalog, QueueDeployment, QueueDeploymentList, draft_name, trim_name, profile_id as check_profile
+from .queue_runtime import ServerlessQueueRuntime, AsyncServerlessQueueRuntime
 
 _PREFIX = "/serverless/queue"
 _T = TypeVar("_T", bound=BaseModel)
@@ -97,6 +98,7 @@ class ServerlessQueue:
     def __init__(self, client: SyncHTTPClient) -> None:
         self._client = client
         self.deployments = QueueDeployments(client)
+        self.runtime = ServerlessQueueRuntime(client)
 
     def catalog(self, *, org_id: str | None = None, timeout: float | None = None) -> QueueCatalog:
         return _parse(QueueCatalog, self._client._request("GET", _PREFIX + "/catalog" + _query(org_id), timeout=timeout))
@@ -106,6 +108,7 @@ class AsyncServerlessQueue:
     def __init__(self, client: AsyncHTTPClient) -> None:
         self._client = client
         self.deployments = AsyncQueueDeployments(client)
+        self.runtime = AsyncServerlessQueueRuntime(client)
 
     async def catalog(self, *, org_id: str | None = None, timeout: float | None = None) -> QueueCatalog:
         return _parse(QueueCatalog, await self._client._request("GET", _PREFIX + "/catalog" + _query(org_id), timeout=timeout))

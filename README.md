@@ -312,6 +312,70 @@ both together and request `sessions.close(id)` during cleanup. Socket closure
 alone does not prove remote media stopped or billing was settled. The SDK
 returns the typed capability; it does not create or manage media peers.
 
+For native `transport="websocket"` sessions, install the source extra with
+`python -m pip install 'qcloud-ai[realtime] @ git+https://github.com/qcloud-host/qcloud-python.git'`
+and use the optional raw-message helper:
+
+```python
+import json
+
+# session is an existing, explicitly authorized metered WebSocket session.
+with client.generation.sessions.open_socket(session.id) as socket:
+    # Follow the model's published input/output schema and socket.encoding.
+    # JSON models accept text; MessagePack models require caller-encoded bytes.
+    socket.send(json.dumps(model_input))  # Only when the model expects JSON text.
+    message = socket.recv()  # str for text, bytes for binary; no automatic codec.
+print(socket.close_result.billing)  # May still be pending or require review.
+```
+
+The async equivalent is `async with await client.generation.sessions.open_socket(id)
+as socket`, with `await socket.send(...)`, `await socket.recv()`, and `async for
+message in socket`. Both helpers also support iteration until normal closure.
+WebRTC signaling capabilities are rejected: this helper does not manage audio,
+video, or media peers. It opens one capability and makes one handshake attempt;
+redirects, proxy discovery, reconnection, and frame replay are disabled. QCloud
+API credentials and custom HTTP headers are never copied into the socket handshake.
+
+The capability must name the same API origin and the exact session socket path.
+For an operator-configured separate relay, opt in with a bare trusted
+`relay_origin="wss://relay.example.com"`; the SDK verifies the returned URL against
+that origin, and never rewrites it. Production sockets require WSS. Plain WS is
+accepted only for literal loopback fixtures. Capability tokens stay in memory;
+library handshake logging is disabled because subprotocols contain the token.
+
+`open_timeout=10`, `send_timeout=10`, and `close_timeout=5` are seconds, each bounded
+to 60. An independent sync shutdown watchdog interrupts a blocked send or close;
+async cleanup aborts the transport when a close handshake cannot finish.
+`max_message_bytes=16777216` bounds incoming and outgoing messages (UTF-8 bytes for
+text); it can only be lowered. `max_queue=4` bounds the library's incoming frame
+high-water mark and can be set from 1 to 16. These are flow-control limits, not a
+total process-memory cap: an in-flight frame and TLS/OS buffers add overhead.
+The async write high-water mark is 32 KiB; only one send may be in flight in either
+client. There is no SDK outbound queue. `max_duration_seconds=3600` is a finite
+local connection lifetime and can only be lowered; the server can close earlier.
+The 30-second capability expiry governs the handshake, not the connected lifetime.
+
+Context exit, normal EOF, transport failure, async cancellation, and the local
+lifetime deadline close the socket and request `sessions.close(id)` once without
+HTTP retries. `close()` / async `aclose()` are repeat-safe. A successful HTTP close
+response is available as `close_result`; inspect its billing status rather than
+assuming socket closure settled usage. A cleanup failure raises
+`GenerationSocketCleanupError` and remains on `socket.cleanup_error`. If an
+application/transport error or cancellation is already in flight, it remains the
+primary exception and gains a separate `cleanup_error` attribute. Explicitly
+retrieve the session to resolve uncertain cleanup; the helper never resumes it.
+If the capability HTTP request itself fails or its basic response cannot be
+parsed, its original SDK error is preserved and no socket is opened or closed.
+An unused capability expires; the helper does not claim ownership of an unparsed
+response. Once a typed capability is returned, stricter socket validation and
+handshake failures request HTTP close exactly once. Sync HTTP cleanup retains the
+SDK's per-network-operation timeout; it is separate from the socket close deadline.
+
+The optional transport is pinned to `websockets==15.0.1` (Python 3.10+), using its
+[sync](https://websockets.readthedocs.io/en/15.0.1/reference/sync/client.html) and
+[async](https://websockets.readthedocs.io/en/15.0.1/reference/asyncio/client.html)
+connection APIs. No public realtime availability is implied by installing it.
+
 For `transport="webrtc"` and `signaling="sse"`, use
 `with client.generation.sessions.offer(id, sdp=offer,
 session_token=capability.token) as events` for WebRTC signaling; the async client
@@ -337,7 +401,7 @@ Model availability and features are determined by the QCloud catalog and upstrea
 
 ## Serverless queue drafts
 
-`client.serverless.queue` saves planning records. It has no launch or job-execution method. A draft creates no endpoint, worker, billing account or charge. The catalog may be empty until an operator publishes reviewed profiles; `runtime_available` remains `False`, and `pricing=None` means unknown, never free.
+`client.serverless.queue.deployments` saves planning records. A draft creates no endpoint, worker, billing account or charge. The catalog may be empty until an operator publishes reviewed profiles; `runtime_available` remains `False`, and `pricing=None` means unknown, never free.
 
 ```python
 from uuid import uuid4
@@ -355,6 +419,27 @@ if catalog.creation_available:
 `AsyncQCloud` exposes the same methods; `await` each call. Use a scoped QCloud key: `serverless:read` for catalog/list/retrieve and `serverless:manage` for creation. Optional `org_id` selects only the key's own organization; it cannot grant access to another tenant. Every method accepts an optional `timeout` in seconds; asynchronous calls support normal task cancellation.
 
 Create makes one HTTP attempt, even when client retries are enabled. If omitted, the SDK generates `client_request_id` and attaches it as `error.client_request_id` to typed API, connection and response-validation errors. After an ambiguous response, explicitly reuse that UUID with the identical name, profile and organization; the server returns the same draft. Changed intent or actor with the same UUID conflicts. For durable recovery across process termination, generate and store the UUID yourself before calling. QCloud deployment UUIDs are validated, and typed responses expose only the public draft fields. See [the draft example](examples/queue_draft.py).
+
+## Queue runtime (inactive)
+
+The additive `client.serverless.queue.runtime` namespace exposes `capabilities()`, endpoint `quote`, `launch`, `list`, `retrieve`, `stop`, and job `quote`, `create`, `list`, `retrieve`, `result`. `AsyncQCloud` exposes the same methods with `await`. Public capabilities currently return `stage="inactive"`, `execution_available=False`, and `billing_available=False`. Installing this SDK does not enable execution. Quote issuance requires a server-approved profile and metered billing eligibility; prepaid queue admission is not supported by this release.
+
+```python
+runtime = client.serverless.queue.runtime
+print(runtime.capabilities())
+page = runtime.endpoints.list(limit=20)
+for endpoint in page.items:
+    print(endpoint.id, endpoint.state)
+if page.next_cursor is not None:
+    runtime.endpoints.list(after_created_at=page.next_cursor.created_at,
+                           after_id=page.next_cursor.id)
+```
+
+In an authorized environment, persist a request UUID, then call `endpoints.quote(draft_id, client_request_id=request_id)` or `jobs.quote(endpoint_id, client_request_id=request_id, input={"prompt": prompt, "max_tokens": max_tokens})`. A quote creates no worker, model request or funds reservation. Its `estimated_cost_usd` is an exact six-decimal string; `is_spending_cap` is always `False`. Replaying the same intent returns the original quote, even after its `expires_at`; use a new UUID to request a new quote. Use `decimal.Decimal`, not binary floats, if performing arithmetic on the estimate.
+
+Launch with `endpoints.launch(draft_id, quote_id=quote.id, client_request_id=quote.client_request_id)` or submit with `jobs.create(endpoint_id, quote_id=quote.id, client_request_id=quote.client_request_id, input=input)`, preserving the quoted input and organization. Quote, launch, job submission and stop each make one HTTP attempt. Persist the UUID and full intent before sending. An ambiguous failure retains `error.client_request_id`; an explicit replay must reuse the same UUID and intent. Stop reports authoritative `financial_exposure` separately from `released`; repeated cancellation may return `False` / `"none"`. A stop request does not itself prove provider cleanup or a refund.
+
+Lists expose `.items` and `.next_cursor`, with `limit` from 1 to 50 (default 20). `retrieve` returns the requested public record. `jobs.result(endpoint_id, job_id)` returns `.available=False` and `.result=None` until a validated result is available; then `.result` contains `.text`, `.finish_reason`, and token `.usage`. `requires_review` and held exposure may persist after an ambiguous operation. Resource UUIDs, response identity, cursor consistency, UTF-8 prompt/result bounds and usage totals are validated; private provider fields are omitted. Prompt limits are 1–16,384 UTF-8 bytes, and `max_tokens` is 1–4,096; an immutable server profile may impose smaller limits. Optional `org_id` and `timeout` follow the draft resource conventions. Existing queue draft methods remain unchanged.
 
 ## Reliability
 

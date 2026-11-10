@@ -23,7 +23,10 @@ from .model import (
     ModelList,
 )
 
+from .queue_runtime import (QueueRuntimeQuote, QueueRuntimeCapabilities, QueueRuntimeCursor, QueueRuntimeEndpoint, QueueRuntimeEndpointList, QueueRuntimeJob, QueueRuntimeJobList, QueueRuntimeResult, QueueRuntimeStopResult, QueueRuntimeTextResult, QueueRuntimeUsage)
+
 __all__ = [
+    "QueueRuntimeQuote", "QueueRuntimeCapabilities", "QueueRuntimeCursor", "QueueRuntimeEndpoint", "QueueRuntimeEndpointList", "QueueRuntimeJob", "QueueRuntimeJobList", "QueueRuntimeResult", "QueueRuntimeStopResult", "QueueRuntimeTextResult", "QueueRuntimeUsage",
     "QueueCatalog", "QueueDeployment", "QueueDeploymentList", "QueueLimits", "QueueProfile",
     "ChatCompletion",
     "ChatCompletionChunk",

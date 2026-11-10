@@ -2,11 +2,12 @@
 
 Usage::
 
+    import os
     from qcloud_ai import QCloudAI
 
     client = QCloudAI(api_key="qc-...")
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=os.environ["QCLOUD_MODEL"],
         messages=[{"role": "user", "content": "Hello!"}],
     )
     print(response.choices[0].message.content)
@@ -16,6 +17,10 @@ from ._async_client import AsyncQCloudAI
 from ._base_client import SDK_VERSION as __version__
 from ._client import QCloudAI
 from ._downloads import GenerationFile, AsyncGenerationFile
+from ._session_socket import (
+    AsyncGenerationSocket, GenerationSocket, GenerationSocketError,
+    GenerationSocketClosed, GenerationSocketCleanupError,
+)
 from .types.serverless import QueueCatalog, QueueDeployment, QueueDeploymentList, QueueLimits, QueueProfile
 from ._exceptions import (
     APIConnectionError,
@@ -52,7 +57,12 @@ from .types.generation import (
     GenerationWebSocketConnection,
 )
 
+from .types.queue_runtime import (QueueRuntimeQuote, QueueRuntimeCapabilities, QueueRuntimeCursor, QueueRuntimeEndpoint, QueueRuntimeEndpointList, QueueRuntimeJob, QueueRuntimeJobList, QueueRuntimeResult, QueueRuntimeStopResult, QueueRuntimeTextResult, QueueRuntimeUsage)
+
 __all__ = [
+    "GenerationSocket", "AsyncGenerationSocket", "GenerationSocketError",
+    "GenerationSocketClosed", "GenerationSocketCleanupError",
+    "QueueRuntimeQuote", "QueueRuntimeCapabilities", "QueueRuntimeCursor", "QueueRuntimeEndpoint", "QueueRuntimeEndpointList", "QueueRuntimeJob", "QueueRuntimeJobList", "QueueRuntimeResult", "QueueRuntimeStopResult", "QueueRuntimeTextResult", "QueueRuntimeUsage",
     "QueueCatalog", "QueueDeployment", "QueueDeploymentList", "QueueLimits", "QueueProfile",
     "__version__",
     "QCloudAI",

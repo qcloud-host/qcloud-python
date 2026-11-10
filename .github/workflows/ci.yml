@@ -17,3 +17,4 @@ jobs:
       - run: python -m pytest
       - run: python -m build
       - run: python -m twine check dist/*
+      - run: python scripts/check_package.py

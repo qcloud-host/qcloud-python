@@ -20,6 +20,9 @@ from .._exceptions import (
     QCloudAIError,
 )
 from .._uuid import normalize_uuid
+from .._session_socket import (
+    AsyncGenerationSocket, GenerationSocket, async_open_socket, open_socket,
+)
 from ..types.generation import (
     GenerationSession,
     GenerationSessionConnection,
@@ -358,6 +361,18 @@ class GenerationSessions:
     def __init__(self, client: SyncHTTPClient) -> None:
         self._client = client
 
+    def open_socket(
+        self, id: str, *, relay_origin: str | None = None,
+        open_timeout: float = 10, close_timeout: float = 5, send_timeout: float = 10,
+        max_message_bytes: int = 16 * 1024 * 1024, max_queue: int = 4,
+        max_duration_seconds: float = 3600,
+    ) -> GenerationSocket:
+        """Open one native WebSocket; exiting its context also requests HTTP close."""
+        return open_socket(self, _id(id), relay_origin=relay_origin,
+                           open_timeout=open_timeout, close_timeout=close_timeout, send_timeout=send_timeout,
+                           max_message_bytes=max_message_bytes, max_queue=max_queue,
+                           max_duration_seconds=max_duration_seconds)
+
     def create(
         self,
         *,
@@ -446,6 +461,18 @@ class GenerationSessions:
 class AsyncGenerationSessions:
     def __init__(self, client: AsyncHTTPClient) -> None:
         self._client = client
+
+    async def open_socket(
+        self, id: str, *, relay_origin: str | None = None,
+        open_timeout: float = 10, close_timeout: float = 5, send_timeout: float = 10,
+        max_message_bytes: int = 16 * 1024 * 1024, max_queue: int = 4,
+        max_duration_seconds: float = 3600,
+    ) -> AsyncGenerationSocket:
+        """Open one native WebSocket; cancellation also requests HTTP close."""
+        return await async_open_socket(self, _id(id), relay_origin=relay_origin,
+                                       open_timeout=open_timeout, close_timeout=close_timeout, send_timeout=send_timeout,
+                                       max_message_bytes=max_message_bytes, max_queue=max_queue,
+                                       max_duration_seconds=max_duration_seconds)
 
     async def create(
         self,
