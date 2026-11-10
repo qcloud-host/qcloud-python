@@ -362,7 +362,9 @@ response is available as `close_result`; inspect its billing status rather than
 assuming socket closure settled usage. A cleanup failure raises
 `GenerationSocketCleanupError` and remains on `socket.cleanup_error`. If an
 application/transport error or cancellation is already in flight, it remains the
-primary exception and gains a separate `cleanup_error` attribute. Explicitly
+primary exception and is given a separate `cleanup_error` attribute. Python 3.10
+may replace `CancelledError` across a task boundary, losing that attribute;
+inspect `socket.cleanup_error` for the durable cleanup result. Explicitly
 retrieve the session to resolve uncertain cleanup; the helper never resumes it.
 If the capability HTTP request itself fails or its basic response cannot be
 parsed, its original SDK error is preserved and no socket is opened or closed.

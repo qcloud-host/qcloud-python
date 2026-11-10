@@ -218,7 +218,13 @@ async def test_cancel_recv_completes_cleanup_and_preserves_cancellation(socket_s
         task.cancel()
         with pytest.raises(asyncio.CancelledError) as caught:
             await task
-        assert isinstance(caught.value.cleanup_error, GenerationSocketCleanupError)
+        # Python 3.10 can replace CancelledError at the Task await boundary.
+        # The socket is the stable carrier even when custom exception attributes
+        # are not preserved by asyncio.
+        assert isinstance(stream.cleanup_error, GenerationSocketCleanupError)
+        assert stream.cleanup_error.http_error.status_code == 503
+        if hasattr(caught.value, "cleanup_error"):
+            assert caught.value.cleanup_error is stream.cleanup_error
         assert state["close"] == 1
 
 
