@@ -1,19 +1,34 @@
 # Release guide
 
-Version 0.3.0 is a source release candidate. PyPI publication is deferred until the owner finishes account verification and two-factor setup. GitHub source and built wheels remain usable separately; this version does not imply a registry release or release tag.
+Version 0.4.0 is a source release candidate. Nothing has been published to PyPI or TestPyPI. The name `qcloud-ai` was unregistered on both indexes on 10 November 2026 (JSON API 404); `qcloud` belongs to an unrelated project.
 
-Before publishing, confirm ownership of the registry name, review the exact commit, run all checks, and verify one authenticated inference request with a QCloud API key and an active catalog model. Mock tests do not establish live model access.
+A published version is immutable: never re-upload a changed file under an existing version. Mock and contract tests do not establish live model access or billing; the release is complete only after the live acceptance at the end of this guide.
 
-## Python / PyPI
+## One-time setup (owner)
 
-1. Complete your individual PyPI account, email verification, and two-factor setup.
-2. Confirm package-name ownership. Choose personal package ownership or apply for a company organization; an organization is not required to publish an SDK.
-3. On the designated release host, run `python -m pip install -e ".[dev]"`, `python -m pytest`, `python -m build`, `python -m twine check dist/*`, and `python scripts/check_package.py`. Build produces a wheel from the sdist; the package check installs the wheel and realtime extra into a fresh virtual environment, checks dependencies and sync/async imports, and makes mocked HTTP requests. Set `QCLOUD_WHEELHOUSE` to a directory of verified dependency wheels for an offline install.
-4. Retain the wheel, sdist, SHA-256 hashes and tested source commit, then publish those exact reviewed artifacts through your authenticated PyPI release process. Prefer GitHub Actions Trusted Publishing once the repository and publisher are configured. Do not commit registry tokens.
-5. After the release exists on PyPI, install it by exact version in a clean consumer, update installation instructions to `python -m pip install qcloud-ai`, remove the candidate marker in the changelog, and tag the released commit `v0.3.0`.
+1. Complete the PyPI and TestPyPI accounts: email verification and two-factor authentication. An organization is optional; it groups ownership and permissions but does not create a package namespace.
+2. In `qcloud-host/qcloud-python` create two GitHub environments:
+   - `testpypi`: deployment branch rule `main` only.
+   - `pypi`: deployment branch rule `main` only and at least one required reviewer.
+3. Register a **pending trusted publisher** on test.pypi.org and on pypi.org (Account → Publishing): project `qcloud-ai`, owner `qcloud-host`, repository `qcloud-python`, workflow `release.yml`, environment `testpypi` and `pypi` respectively. No API token is created or stored.
 
-Publisher configuration, if using a future GitHub release workflow: owner `qcloud-host`, repository `qcloud-python`, with an exact workflow filename and a protected release environment. No trusted publisher or registry credential has been created by this repository.
+## Release
 
-The app's `sdks/python` tree is canonical. Promote the complete tested subtree to `qcloud-host/qcloud-python` and verify the Git tree matches before publication. Do not include application settings, provider credentials or release-host caches. Public queue capabilities and model admission remain server decisions; passing SDK tests does not activate billing or inference.
+1. Promote the complete tested `sdks/python` tree from the backend repository to `qcloud-host/qcloud-python` and verify the Git trees match. Do not include application settings, provider credentials or release-host caches.
+2. Confirm the version in `pyproject.toml`, `SDK_VERSION` and `CHANGELOG.md`.
+3. Run **Actions → Release** with `version` and `target: testpypi`. The workflow tests Python 3.10 and 3.13, builds the sdist and wheel once, runs `twine check --strict` and the clean-install package check, writes `SHA256SUMS`, attests build provenance, uploads the files to TestPyPI and then downloads them back from TestPyPI to verify they are byte-identical and install in a clean environment. PyPI publication also produces PEP 740 attestations.
+4. Install from TestPyPI on the PVE build host in a fresh environment (dependencies from PyPI):
+   `python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ qcloud-ai==0.4.0`
+5. Run the workflow again with `target: pypi`. A reviewer approves the `pypi` environment; the identical, already verified files are published and a draft GitHub release with the files and checksums is created.
+6. Update the README install line to `python -m pip install qcloud-ai`, remove the candidate marker in the changelog and publish the draft release as tag `v0.4.0`.
 
-[PyPI organizations](https://pypi.org/organizations/) · [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+## Live acceptance (required before announcing)
+
+From a clean environment on PVE, with only `QCLOUD_API_KEY` and an active `QCLOUD_MODEL`:
+
+1. `pip install qcloud-ai==<version>` from PyPI.
+2. One non-streaming and one streaming chat request.
+3. Confirm the request's usage record (request ID, tokens) and the resulting charge in the console match the provider-reported usage.
+4. Record the evidence with the exact artifact hashes. Report separately which checks used mocks and which used the live provider.
+
+[PyPI organizations](https://docs.pypi.org/organization-accounts/) · [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) · [Attestations](https://docs.pypi.org/attestations/)

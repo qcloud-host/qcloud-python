@@ -6,36 +6,42 @@ import os
 import random
 import re
 import time
-from email.utils import parsedate_to_datetime
 from typing import Any, Mapping, TypeVar
 from urllib.parse import urlsplit
 import httpx
 from ._exceptions import (
-    APIError,
     APIConnectionError,
     APITimeoutError,
     APIResponseValidationError,
     _raise_for_status,
+    _retry_after_seconds,
 )
 
 DEFAULT_BASE_URL = "https://platform.qcloud.host/api/v1"
 DEFAULT_TIMEOUT = 600.0
 DEFAULT_MAX_RETRIES = 2
-SDK_VERSION = "0.3.0"
+SDK_VERSION = "0.4.0"
+
+
+# Failures raised while a connection is being established. The request bytes
+# were never written, so the API cannot have admitted or billed the request and
+# a retry is safe for every method. Read/write timeouts, protocol errors and
+# resets on a reused connection are ambiguous for POST and are never replayed.
+_NOT_SENT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+
+
+def _retryable_status(method: str, status: int) -> bool:
+    """429 is an admission rejection before any provider dispatch. Other
+    statuses are retried only for read-only requests."""
+    if status == 429:
+        return True
+    return method == "GET" and (status in (408, 409) or status >= 500)
 
 
 def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
-    value = response.headers.get("retry-after") if response else None
-    if value:
-        try:
-            delay = float(value)
-        except ValueError:
-            try:
-                delay = parsedate_to_datetime(value).timestamp() - time.time()
-            except (ValueError, TypeError, OverflowError):
-                delay = -1
-        if 0 <= delay <= 60:
-            return delay
+    delay = _retry_after_seconds(response.headers.get("retry-after")) if response else None
+    if delay is not None and delay <= 60:
+        return delay
     return min(0.5 * 2**attempt, 8) * (0.75 + random.random() * 0.25)
 
 
@@ -44,11 +50,7 @@ def _binary_error(response: httpx.Response, raw: bytes) -> None:
         data = json.loads(raw)
     except (ValueError, UnicodeDecodeError, RecursionError):
         data = {"error": {"message": raw.decode("utf-8", errors="replace")[:500] or response.reason_phrase}}
-    try:
-        _raise_for_status(response.status_code, data)
-    except APIError as error:
-        error.request_id = response.headers.get("x-request-id")
-        raise
+    _raise_for_status(response.status_code, data, response.headers)
 
 
 def _validate_response(response: httpx.Response, stream: bool, binary: bool = False) -> None:
@@ -57,11 +59,7 @@ def _validate_response(response: httpx.Response, stream: bool, binary: bool = Fa
             data = response.json()
         except ValueError:
             data = {"error": {"message": response.text[:500] or response.reason_phrase}}
-        try:
-            _raise_for_status(response.status_code, data)
-        except APIError as error:
-            error.request_id = response.headers.get("x-request-id")
-            raise
+        _raise_for_status(response.status_code, data, response.headers)
     if binary:
         return
     if stream:
@@ -196,16 +194,7 @@ class SyncHTTPClient(BaseClient):
                 response = self._client.send(
                     request, stream=stream or binary, follow_redirects=False
                 )
-                if attempt < retries and (
-                    response.status_code == 429
-                    or (
-                        method == "GET"
-                        and (
-                            response.status_code in (408, 409)
-                            or response.status_code >= 500
-                        )
-                    )
-                ):
+                if attempt < retries and _retryable_status(method, response.status_code):
                     delay = _retry_delay(response, attempt)
                     response.close()
                     time.sleep(delay)
@@ -224,8 +213,11 @@ class SyncHTTPClient(BaseClient):
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
                     response.close()
-                # An ambiguous POST failure may already have generated billable output.
-                if method == "GET" and attempt < retries:
+                # An ambiguous POST failure may already have generated billable
+                # output. Only a failure before the request was sent is replayed.
+                if attempt < retries and (
+                    method == "GET" or isinstance(error, _NOT_SENT_ERRORS)
+                ):
                     time.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):
@@ -291,16 +283,7 @@ class AsyncHTTPClient(BaseClient):
                 response = await self._client.send(
                     request, stream=stream or binary, follow_redirects=False
                 )
-                if attempt < retries and (
-                    response.status_code == 429
-                    or (
-                        method == "GET"
-                        and (
-                            response.status_code in (408, 409)
-                            or response.status_code >= 500
-                        )
-                    )
-                ):
+                if attempt < retries and _retryable_status(method, response.status_code):
                     delay = _retry_delay(response, attempt)
                     await response.aclose()
                     await asyncio.sleep(delay)
@@ -319,7 +302,9 @@ class AsyncHTTPClient(BaseClient):
             except (httpx.TimeoutException, httpx.TransportError) as error:
                 if response is not None:
                     await response.aclose()
-                if method == "GET" and attempt < retries:
+                if attempt < retries and (
+                    method == "GET" or isinstance(error, _NOT_SENT_ERRORS)
+                ):
                     await asyncio.sleep(_retry_delay(None, attempt))
                     continue
                 if isinstance(error, httpx.TimeoutException):

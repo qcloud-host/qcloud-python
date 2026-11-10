@@ -3,14 +3,14 @@
 Usage::
 
     import os
-    from qcloud_ai import QCloudAI
+    from qcloud_ai import QCloud
 
-    client = QCloudAI(api_key="qc-...")
-    response = client.chat.completions.create(
-        model=os.environ["QCLOUD_MODEL"],
-        messages=[{"role": "user", "content": "Hello!"}],
-    )
-    print(response.choices[0].message.content)
+    with QCloud(api_key=os.environ["QCLOUD_API_KEY"]) as client:
+        response = client.chat.completions.create(
+            model=os.environ["QCLOUD_MODEL"],
+            messages=[{"role": "user", "content": "Hello!"}],
+        )
+        print(response.choices[0].message.content)
 """
 
 from ._async_client import AsyncQCloudAI
@@ -28,13 +28,18 @@ from ._exceptions import (
     APIResponseValidationError,
     APITimeoutError,
     AuthenticationError,
+    BadRequestError,
+    ConflictError,
     InsufficientCreditsError,
     InternalServerError,
     NotFoundError,
     PermissionDeniedError,
     QCloudAIError,
     RateLimitError,
+    RateLimitInfo,
+    UnprocessableEntityError,
 )
+from .types.message import Message, MessageContentBlock, MessageStreamEvent, MessageUsage
 from .resources.generation import GenerationJobError, GenerationTimeoutError
 from .resources.generation_sessions import (
     AsyncGenerationSessionStream,
@@ -80,6 +85,14 @@ __all__ = [
     "NotFoundError",
     "PermissionDeniedError",
     "RateLimitError",
+    "RateLimitInfo",
+    "BadRequestError",
+    "ConflictError",
+    "UnprocessableEntityError",
+    "Message",
+    "MessageContentBlock",
+    "MessageStreamEvent",
+    "MessageUsage",
     "GenerationJobError",
     "GenerationTimeoutError",
     "GenerationModel",

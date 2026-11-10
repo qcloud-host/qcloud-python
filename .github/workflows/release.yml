@@ -1,0 +1,180 @@
+# Build once, test, attest, publish the same files to TestPyPI, verify them, then
+# (only when requested) publish the identical files to PyPI. Publishing uses
+# PyPI Trusted Publishing (OIDC): no registry token is stored anywhere.
+#
+# One-time setup (see RELEASING.md): create the protected environments
+# `testpypi` and `pypi` in this repository, then register pending trusted
+# publishers on test.pypi.org and pypi.org for project `qcloud-ai`, owner
+# `qcloud-host`, repository `qcloud-python`, workflow `release.yml` and the
+# matching environment name.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release; must equal pyproject.toml (for example 0.4.0)
+        required: true
+      target:
+        description: testpypi only, or testpypi followed by pypi
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+permissions: {}
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # build provenance attestation
+      attestations: write
+    outputs:
+      sha256: ${{ steps.sums.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Check requested version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          actual=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          sdk=$(python -c "import re;print(re.search(r'SDK_VERSION = \"([^\"]+)\"', open('src/qcloud_ai/_base_client.py').read()).group(1))")
+          if [ "$actual" != "$REQUESTED" ] || [ "$sdk" != "$REQUESTED" ]; then
+            echo "pyproject $actual / SDK_VERSION $sdk != $REQUESTED"; exit 1
+          fi
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - run: python scripts/check_package.py
+      - name: Checksums
+        id: sums
+        run: |
+          cd dist && sha256sum -- qcloud_ai-* > SHA256SUMS && cat SHA256SUMS
+          echo "sha256=$(sha256sum SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/qcloud_ai-*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/qcloud-ai/${{ inputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Verify the tested files
+        env:
+          EXPECTED: ${{ needs.build.outputs.sha256 }}
+        run: |
+          cd dist && test "$(sha256sum SHA256SUMS | cut -d' ' -f1)" = "$EXPECTED" && sha256sum -c SHA256SUMS && rm SHA256SUMS
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-testpypi:
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: expected/
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Registry files equal the tested files, and they install cleanly
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for _ in 1 2 3 4 5 6; do
+            python -m pip download --no-deps --no-cache-dir -d registry \
+              --index-url https://test.pypi.org/simple/ "qcloud-ai==$VERSION" && break
+            sleep 20
+          done
+          python -m pip download --no-deps --no-cache-dir --no-binary :all: -d registry \
+            --index-url https://test.pypi.org/simple/ "qcloud-ai==$VERSION"
+          (cd registry && sha256sum qcloud_ai-* | sort) > got
+          (cd expected && grep qcloud_ai- SHA256SUMS | sort) > want
+          diff want got
+          python -m venv /tmp/consumer
+          /tmp/consumer/bin/pip install --no-cache-dir registry/qcloud_ai-*.whl
+          /tmp/consumer/bin/python -c "import qcloud_ai, sys; assert qcloud_ai.__version__ == sys.argv[1]; from qcloud_ai import QCloud, AsyncQCloud" "$VERSION"
+
+  publish-pypi:
+    if: inputs.target == 'pypi'
+    needs: [build, verify-testpypi]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/qcloud-ai/${{ inputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Verify the tested files
+        env:
+          EXPECTED: ${{ needs.build.outputs.sha256 }}
+        run: |
+          cd dist && test "$(sha256sum SHA256SUMS | cut -d' ' -f1)" = "$EXPECTED" && sha256sum -c SHA256SUMS && rm SHA256SUMS
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Draft a GitHub release with the published files and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --title "qcloud-ai $VERSION" --notes "Published to PyPI from $GITHUB_SHA. See CHANGELOG.md."

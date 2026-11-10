@@ -11,6 +11,7 @@ from .resources.embeddings import Embeddings
 from .resources.models import Models
 from .resources.generation import Generation
 from .resources.serverless import Serverless
+from .resources.messages import Messages
 
 
 class QCloudAI(SyncHTTPClient):
@@ -34,6 +35,7 @@ class QCloudAI(SyncHTTPClient):
     models: Models
     generation: Generation
     serverless: Serverless
+    messages: Messages
 
     def __init__(
         self,
@@ -61,3 +63,4 @@ class QCloudAI(SyncHTTPClient):
         self.models = Models(self)
         self.generation = Generation(self)
         self.serverless = Serverless(self)
+        self.messages = Messages(self)

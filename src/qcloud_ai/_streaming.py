@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from typing import Any, Generic, Iterator, AsyncIterator, TypeVar
+from typing import Any, Callable, Generic, Iterator, AsyncIterator, Optional, TypeVar
 import httpx
 from ._exceptions import (
     APIError,
@@ -10,6 +10,10 @@ from ._exceptions import (
 )
 
 T = TypeVar("T")
+
+# Streams that end with a named terminal event (Anthropic Messages) rather than
+# the ``[DONE]`` sentinel used by Chat Completions.
+Terminal = Optional[Callable[[Any], bool]]
 
 
 class _Decoder:
@@ -43,14 +47,24 @@ def _parse(payload: str, cast: type[T]) -> T:
             if isinstance(error, dict)
             else str(error)
         )
-        raise APIError(200, message, body=data)
+        details = error if isinstance(error, dict) else {}
+        raise APIError(
+            200,
+            message if isinstance(message, str) else "Streaming error",
+            error_type=details.get("type") if isinstance(details.get("type"), str) else None,
+            code=details.get("code") if isinstance(details.get("code"), str) else None,
+            body=data,
+        )
     return cast(**data)
 
 
 class Stream(Generic[T]):
-    def __init__(self, response: httpx.Response, *, cast: type[T]) -> None:
+    def __init__(
+        self, response: httpx.Response, *, cast: type[T], terminal: Terminal = None
+    ) -> None:
         self._response = response
         self._cast = cast
+        self._terminal = terminal
         self._closed = False
         self._iterator = self._iter_events()
 
@@ -69,18 +83,28 @@ class Stream(Generic[T]):
                 payload = decoder.feed(line)
                 if payload is None:
                     continue
-                if payload.strip() == "[DONE]":
+                if payload.strip() == "[DONE]" and self._terminal is None:
                     return
-                yield _parse(payload, self._cast)
+                item = _parse(payload, self._cast)
+                yield item
+                if self._terminal is not None and self._terminal(item):
+                    return
             payload = decoder.feed("")
-            if payload is not None and payload.strip() == "[DONE]":
+            if payload is not None and payload.strip() == "[DONE]" and self._terminal is None:
                 return
             if payload is not None:
-                yield _parse(payload, self._cast)
+                item = _parse(payload, self._cast)
+                yield item
+                if self._terminal is not None and self._terminal(item):
+                    return
             if not self._closed:
-                raise APIResponseValidationError("The SSE response ended before [DONE]")
+                raise APIResponseValidationError(
+                    "The SSE response ended before [DONE]"
+                    if self._terminal is None
+                    else "The SSE response ended before its terminal event"
+                )
         except APIError as error:
-            error.request_id = self._response.headers.get("x-request-id")
+            error._attach_headers(self._response.headers)
             raise
         except httpx.TimeoutException as error:
             raise APITimeoutError() from error
@@ -102,9 +126,12 @@ class Stream(Generic[T]):
 
 
 class AsyncStream(Generic[T]):
-    def __init__(self, response: httpx.Response, *, cast: type[T]) -> None:
+    def __init__(
+        self, response: httpx.Response, *, cast: type[T], terminal: Terminal = None
+    ) -> None:
         self._response = response
         self._cast = cast
+        self._terminal = terminal
         self._closed = False
         self._iterator = self._iter_events()
 
@@ -123,18 +150,28 @@ class AsyncStream(Generic[T]):
                 payload = decoder.feed(line)
                 if payload is None:
                     continue
-                if payload.strip() == "[DONE]":
+                if payload.strip() == "[DONE]" and self._terminal is None:
                     return
-                yield _parse(payload, self._cast)
+                item = _parse(payload, self._cast)
+                yield item
+                if self._terminal is not None and self._terminal(item):
+                    return
             payload = decoder.feed("")
-            if payload is not None and payload.strip() == "[DONE]":
+            if payload is not None and payload.strip() == "[DONE]" and self._terminal is None:
                 return
             if payload is not None:
-                yield _parse(payload, self._cast)
+                item = _parse(payload, self._cast)
+                yield item
+                if self._terminal is not None and self._terminal(item):
+                    return
             if not self._closed:
-                raise APIResponseValidationError("The SSE response ended before [DONE]")
+                raise APIResponseValidationError(
+                    "The SSE response ended before [DONE]"
+                    if self._terminal is None
+                    else "The SSE response ended before its terminal event"
+                )
         except APIError as error:
-            error.request_id = self._response.headers.get("x-request-id")
+            error._attach_headers(self._response.headers)
             raise
         except httpx.TimeoutException as error:
             raise APITimeoutError() from error

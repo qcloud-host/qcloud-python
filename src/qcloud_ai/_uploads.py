@@ -204,7 +204,7 @@ def _result(response: httpx.Response, raw: bytes, upload: UploadInput) -> Genera
     except (ValueError, UnicodeError, RecursionError):
         data = {"error": {"message": raw.decode("utf8", errors="replace")[:500] or response.reason_phrase}}
     try:
-        _raise_for_status(response.status_code, data)
+        _raise_for_status(response.status_code, data, response.headers)
     except APIError as error:
         error.request_id = response.headers.get("x-request-id")
         raise
