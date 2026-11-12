@@ -57,7 +57,9 @@ class RateLimitInfo:
     def from_headers(cls, headers: Mapping[str, str]) -> Optional["RateLimitInfo"]:
         info = cls(
             limit_requests=_integer_header(headers, "x-ratelimit-limit-requests"),
-            remaining_requests=_integer_header(headers, "x-ratelimit-remaining-requests"),
+            remaining_requests=_integer_header(
+                headers, "x-ratelimit-remaining-requests"
+            ),
             limit_tokens=_integer_header(headers, "x-ratelimit-limit-tokens"),
             remaining_tokens=_integer_header(headers, "x-ratelimit-remaining-tokens"),
         )
@@ -251,4 +253,18 @@ def _raise_for_status(
 
 
 class APIResponseValidationError(QCloudAIError):
-    """The server returned invalid JSON or an unexpected streaming format."""
+    """The server returned invalid JSON, a mismatched schema, or an invalid stream.
+
+    ``status_code`` and ``request_id`` are included when the response is available.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.request_id = request_id
+        super().__init__(message)

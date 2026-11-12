@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from .._base_client import SyncHTTPClient, AsyncHTTPClient
-from .._exceptions import _raise_for_status
+from .._response import parse_response
 from ..types.model import Model, ModelList
 
 
@@ -13,17 +13,28 @@ class Models:
     def __init__(self, client: SyncHTTPClient) -> None:
         self._client = client
 
-    def list(self) -> ModelList:
-        response = self._client._request("GET", "/models")
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return ModelList(**data)
+    def list(
+        self, *, timeout: float | None = None, max_retries: int | None = None
+    ) -> ModelList:
+        response = self._client._request(
+            "GET", "/models", timeout=timeout, max_retries=max_retries
+        )
+        return parse_response(response, ModelList)
 
-    def retrieve(self, model: str) -> Model:
-        response = self._client._request("GET", f"/models/{quote(model, safe='')}")
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return Model(**data)
+    def retrieve(
+        self,
+        model: str,
+        *,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> Model:
+        response = self._client._request(
+            "GET",
+            f"/models/{quote(model, safe='')}",
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        return parse_response(response, Model)
 
 
 class AsyncModels:
@@ -32,16 +43,25 @@ class AsyncModels:
     def __init__(self, client: AsyncHTTPClient) -> None:
         self._client = client
 
-    async def list(self) -> ModelList:
-        response = await self._client._request("GET", "/models")
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return ModelList(**data)
-
-    async def retrieve(self, model: str) -> Model:
+    async def list(
+        self, *, timeout: float | None = None, max_retries: int | None = None
+    ) -> ModelList:
         response = await self._client._request(
-            "GET", f"/models/{quote(model, safe='')}"
+            "GET", "/models", timeout=timeout, max_retries=max_retries
         )
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return Model(**data)
+        return parse_response(response, ModelList)
+
+    async def retrieve(
+        self,
+        model: str,
+        *,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> Model:
+        response = await self._client._request(
+            "GET",
+            f"/models/{quote(model, safe='')}",
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        return parse_response(response, Model)

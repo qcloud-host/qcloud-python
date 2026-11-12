@@ -2,6 +2,11 @@
 
 ## 0.4.0 — source candidate, not published
 
+- Per-request timeout and retry controls for sync/async inference and model catalog calls.
+- Consistent SDK validation errors with request IDs for malformed successful JSON responses.
+- Request/error documentation and runnable retry/stream lifecycle examples.
+- Independent PyPI/TestPyPI release targets with artifact checksum and clean-install verification.
+
 - `APIError` now carries the request ID (`X-Request-ID`, or `request-id` from Messages), response headers, parsed `Retry-After`, reported admission rate limits and the server error code, and keeps the server's error type.
 - New `BadRequestError` (400), `ConflictError` (409) and `UnprocessableEntityError` (422), all subclasses of `APIError`.
 - POST requests are retried after connection failures that occurred before the request was sent. Ambiguous failures after sending are still never replayed.

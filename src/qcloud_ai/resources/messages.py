@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, Union, overload
 
+from .._response import parse_response
 from .._base_client import AsyncHTTPClient, SyncHTTPClient
 from .._streaming import AsyncStream, Stream
 from ..types.message import Message, MessageStreamEvent
@@ -52,6 +53,8 @@ class Messages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Message: ...
 
@@ -63,6 +66,8 @@ class Messages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Stream[MessageStreamEvent]: ...
 
@@ -74,6 +79,8 @@ class Messages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Message, Stream[MessageStreamEvent]]: ...
 
@@ -84,6 +91,8 @@ class Messages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Message, Stream[MessageStreamEvent]]:
         response = self._client._request(
@@ -91,11 +100,13 @@ class Messages:
             "/messages",
             body=_body(model, max_tokens, messages, stream, kwargs),
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
             headers=_HEADERS,
         )
         if stream:
             return Stream(response, cast=MessageStreamEvent, terminal=_is_stop)
-        return Message(**response.json())
+        return parse_response(response, Message)
 
 
 class AsyncMessages:
@@ -112,6 +123,8 @@ class AsyncMessages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Message: ...
 
@@ -123,6 +136,8 @@ class AsyncMessages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> AsyncStream[MessageStreamEvent]: ...
 
@@ -134,6 +149,8 @@ class AsyncMessages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Message, AsyncStream[MessageStreamEvent]]: ...
 
@@ -144,6 +161,8 @@ class AsyncMessages:
         max_tokens: int,
         messages: List[Dict[str, Any]],
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Message, AsyncStream[MessageStreamEvent]]:
         response = await self._client._request(
@@ -151,8 +170,10 @@ class AsyncMessages:
             "/messages",
             body=_body(model, max_tokens, messages, stream, kwargs),
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
             headers=_HEADERS,
         )
         if stream:
             return AsyncStream(response, cast=MessageStreamEvent, terminal=_is_stop)
-        return Message(**response.json())
+        return parse_response(response, Message)

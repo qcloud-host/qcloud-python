@@ -1,34 +1,72 @@
 # Release guide
 
-Version 0.4.0 is a source release candidate. Nothing has been published to PyPI or TestPyPI. The name `qcloud-ai` was unregistered on both indexes on 10 November 2026 (JSON API 404); `qcloud` belongs to an unrelated project.
+Version 0.4.0 is an unpublished source release candidate. Check the registry
+before releasing; a published version is immutable and changed files must never
+be uploaded under an existing version. The distribution name is `qcloud-ai`.
 
-A published version is immutable: never re-upload a changed file under an existing version. Mock and contract tests do not establish live model access or billing; the release is complete only after the live acceptance at the end of this guide.
+## One-time setup
 
-## One-time setup (owner)
+1. Complete the destination registry account's email verification and two-factor
+   authentication. PyPI and TestPyPI are separate services and accounts.
+2. In `qcloud-host/qcloud-python`, create a GitHub environment named `pypi`, with
+   a deployment branch rule allowing only `main` and at least one required
+   reviewer. Create `testpypi` only if you intend to publish there.
+3. On the selected registry, register a pending trusted publisher: project
+   `qcloud-ai`, owner `qcloud-host`, repository `qcloud-python`, workflow
+   `release.yml`, and the matching environment (`pypi` or `testpypi`). If the
+   project already exists, add the publisher in its Publishing settings instead.
+   This authorizes that workflow to publish; no permanent API token is needed.
 
-1. Complete the PyPI and TestPyPI accounts: email verification and two-factor authentication. An organization is optional; it groups ownership and permissions but does not create a package namespace.
-2. In `qcloud-host/qcloud-python` create two GitHub environments:
-   - `testpypi`: deployment branch rule `main` only.
-   - `pypi`: deployment branch rule `main` only and at least one required reviewer.
-3. Register a **pending trusted publisher** on test.pypi.org and on pypi.org (Account → Publishing): project `qcloud-ai`, owner `qcloud-host`, repository `qcloud-python`, workflow `release.yml`, environment `testpypi` and `pypi` respectively. No API token is created or stored.
+A production release does not require a TestPyPI account or TestPyPI publication.
 
-## Release
+## Verify locally
 
-1. Promote the complete tested `sdks/python` tree from the backend repository to `qcloud-host/qcloud-python` and verify the Git trees match. Do not include application settings, provider credentials or release-host caches.
-2. Confirm the version in `pyproject.toml`, `SDK_VERSION` and `CHANGELOG.md`.
-3. Run **Actions → Release** with `version` and `target: testpypi`. The workflow tests Python 3.10 and 3.13, builds the sdist and wheel once, runs `twine check --strict` and the clean-install package check, writes `SHA256SUMS`, attests build provenance, uploads the files to TestPyPI and then downloads them back from TestPyPI to verify they are byte-identical and install in a clean environment. PyPI publication also produces PEP 740 attestations.
-4. Install from TestPyPI on the PVE build host in a fresh environment (dependencies from PyPI):
-   `python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ qcloud-ai==0.4.0`
-5. Run the workflow again with `target: pypi`. A reviewer approves the `pypi` environment; the identical, already verified files are published and a draft GitHub release with the files and checksums is created.
-6. Update the README install line to `python -m pip install qcloud-ai`, remove the candidate marker in the changelog and publish the draft release as tag `v0.4.0`.
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest
+python -m build
+python -m twine check --strict dist/*
+python scripts/check_package.py
+```
 
-## Live acceptance (required before announcing)
+Start with an empty `dist` directory for the selected version. The package check
+installs the built wheel with its realtime extra in an isolated environment,
+checks dependencies, and runs sync/async calls against a mock transport. These
+checks do not make paid QCloud requests.
 
-From a clean environment on PVE, with only `QCLOUD_API_KEY` and an active `QCLOUD_MODEL`:
+## Publish to one registry
 
-1. `pip install qcloud-ai==<version>` from PyPI.
-2. One non-streaming and one streaming chat request.
-3. Confirm the request's usage record (request ID, tokens) and the resulting charge in the console match the provider-reported usage.
-4. Record the evidence with the exact artifact hashes. Report separately which checks used mocks and which used the live provider.
+1. Ensure the reviewed source is on `main` and any SDK mirror in the application
+   repository matches it. Confirm `pyproject.toml`, `SDK_VERSION`, and the
+   changelog use the same version. Do not include credentials or local settings.
+2. Run **Actions → Release** on `main`, with the version and either `pypi` or
+   `testpypi` as the target. Each run tests Python 3.10 and 3.13, builds a wheel
+   and source archive, checks metadata strictly, and clean-installs the wheel.
+3. Approve the selected GitHub environment when required. That run's files are
+   checked against `SHA256SUMS`, attested, and uploaded to the selected registry.
+4. The workflow downloads both files from that registry, compares both the
+   registry metadata and downloaded bytes to the tested checksums, and runs the
+   clean-install package check again. For PyPI only, successful verification
+   creates a draft GitHub release with the artifacts and checksums.
+5. Confirm the registry page and draft release, update the README's installation
+   instructions and candidate marker only after publication, then publish the
+   draft as tag `v0.4.0`.
 
-[PyPI organizations](https://docs.pypi.org/organization-accounts/) · [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) · [Attestations](https://docs.pypi.org/attestations/)
+TestPyPI and PyPI runs are independent builds. A separate run does **not** reuse
+first-run artifacts, and this workflow does not claim byte-for-byte promotion
+between registries. Within each run, published and downloaded files must match
+the tested files exactly. Do not rerun publication for a version already uploaded
+to the selected registry. If verification fails after upload, inspect and verify
+the existing files; prepare a new version for any code change.
+
+## Live acceptance before announcing
+
+From a fresh environment, install `qcloud-ai==<version>` from PyPI. With an
+authorized QCloud key and an active model, make one non-streaming and one
+streaming chat request, then confirm the request IDs, token usage, and resulting
+charge against the console. Record artifact hashes and distinguish mock checks
+from live provider checks. Do not announce generation execution, uploads,
+realtime, or serverless execution as available without checking current gates.
+
+[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) ·
+[Attestations](https://docs.pypi.org/attestations/)

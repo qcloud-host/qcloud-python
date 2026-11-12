@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union
 
+from .._response import parse_response
 from .._base_client import SyncHTTPClient, AsyncHTTPClient
-from .._exceptions import _raise_for_status
 from ..types.embedding import CreateEmbeddingResponse
 
 
@@ -18,14 +18,16 @@ class Embeddings:
         *,
         model: str,
         input: Union[str, List[str]],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> CreateEmbeddingResponse:
         body: Dict[str, Any] = {"model": model, "input": input, **kwargs}
 
-        response = self._client._request("POST", "/embeddings", body=body)
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return CreateEmbeddingResponse(**data)
+        response = self._client._request(
+            "POST", "/embeddings", body=body, timeout=timeout, max_retries=max_retries
+        )
+        return parse_response(response, CreateEmbeddingResponse)
 
 
 class AsyncEmbeddings:
@@ -39,11 +41,13 @@ class AsyncEmbeddings:
         *,
         model: str,
         input: Union[str, List[str]],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> CreateEmbeddingResponse:
         body: Dict[str, Any] = {"model": model, "input": input, **kwargs}
 
-        response = await self._client._request("POST", "/embeddings", body=body)
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return CreateEmbeddingResponse(**data)
+        response = await self._client._request(
+            "POST", "/embeddings", body=body, timeout=timeout, max_retries=max_retries
+        )
+        return parse_response(response, CreateEmbeddingResponse)

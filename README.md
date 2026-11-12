@@ -114,6 +114,29 @@ finally:
 
 Every HTTP error subclasses `APIError`: `BadRequestError` (400), `AuthenticationError` (401), `InsufficientCreditsError` (402), `PermissionDeniedError` (403), `NotFoundError` (404), `ConflictError` (409), `UnprocessableEntityError` (422), `RateLimitError` (429) and `InternalServerError` (5xx). Each carries `request_id` (quote it to support), `headers`, `retry_after` in seconds, `rate_limit` (`limit_requests`, `remaining_requests`, `limit_tokens`, `remaining_tokens`), `error_type` and `code`. Network failures raise `APIConnectionError` or `APITimeoutError`. Responses are Pydantic objects; use `model_dump()` for dictionaries. The full matrix is in [COMPATIBILITY.md](COMPATIBILITY.md).
 
+### Per-request controls
+
+Override client defaults on inference or model catalog calls:
+
+```python
+reply = client.chat.completions.create(
+    model=os.environ["QCLOUD_MODEL"],
+    messages=[{"role": "user", "content": "Hello"}],
+    timeout=30,
+    max_retries=0,
+)
+```
+
+`timeout` and `max_retries` configure the transport and are not sent in the JSON
+body. The same controls work with async calls. Invalid successful JSON responses
+raise `APIResponseValidationError`, with a request ID when available. Read the
+[request and error guide](docs/requests-and-errors.md) for retry safety, stream
+cleanup, usage handling, and model availability.
+
+Try the offline [request controls example](examples/request_controls.py), then
+the live [stream lifecycle example](examples/stream_lifecycle.py) with your key
+and an active model.
+
 ## Anthropic-style Messages
 
 `client.messages` calls QCloud's Messages bridge with the same key and base URL. It supports text, system prompts, images for `vision` models and function tools. Thinking, prompt caching, beta headers, documents, server tools, `top_k` and non-empty `stop_sequences` fail with `BadRequestError` before dispatch, and exact token counting is not available. It is not a Claude Code gateway.

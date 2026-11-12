@@ -1,5 +1,5 @@
-# Build once, test, attest, publish the same files to TestPyPI, verify them, then
-# (only when requested) publish the identical files to PyPI. Publishing uses
+# Test, build once, attest, publish to the selected registry, then verify the
+# downloaded artifacts against this run's checksums. Publishing uses
 # PyPI Trusted Publishing (OIDC): no registry token is stored anywhere.
 #
 # One-time setup (see RELEASING.md): create the protected environments
@@ -16,7 +16,7 @@ on:
         description: Version to release; must equal pyproject.toml (for example 0.4.0)
         required: true
       target:
-        description: testpypi only, or testpypi followed by pypi
+        description: Registry to publish to (each run builds and verifies its own artifacts)
         type: choice
         options: [testpypi, pypi]
         default: testpypi
@@ -29,6 +29,7 @@ concurrency:
 
 jobs:
   test:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,12 +89,12 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  publish-testpypi:
+  publish:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: testpypi
-      url: https://test.pypi.org/project/qcloud-ai/${{ inputs.version }}/
+      name: ${{ inputs.target }}
+      url: ${{ inputs.target == 'pypi' && 'https://pypi.org' || 'https://test.pypi.org' }}/project/qcloud-ai/${{ inputs.version }}/
     permissions:
       id-token: write
     steps:
@@ -108,13 +109,17 @@ jobs:
           cd dist && test "$(sha256sum SHA256SUMS | cut -d' ' -f1)" = "$EXPECTED" && sha256sum -c SHA256SUMS && rm SHA256SUMS
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
-          repository-url: https://test.pypi.org/legacy/
+          repository-url: ${{ inputs.target == 'pypi' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
 
-  verify-testpypi:
-    needs: [build, publish-testpypi]
+  verify-registry:
+    needs: [build, publish]
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
@@ -122,47 +127,19 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - name: Registry files equal the tested files, and they install cleanly
+      - name: Registry files equal the tested files and install cleanly
         env:
           VERSION: ${{ inputs.version }}
-        run: |
-          for _ in 1 2 3 4 5 6; do
-            python -m pip download --no-deps --no-cache-dir -d registry \
-              --index-url https://test.pypi.org/simple/ "qcloud-ai==$VERSION" && break
-            sleep 20
-          done
-          python -m pip download --no-deps --no-cache-dir --no-binary :all: -d registry \
-            --index-url https://test.pypi.org/simple/ "qcloud-ai==$VERSION"
-          (cd registry && sha256sum qcloud_ai-* | sort) > got
-          (cd expected && grep qcloud_ai- SHA256SUMS | sort) > want
-          diff want got
-          python -m venv /tmp/consumer
-          /tmp/consumer/bin/pip install --no-cache-dir registry/qcloud_ai-*.whl
-          /tmp/consumer/bin/python -c "import qcloud_ai, sys; assert qcloud_ai.__version__ == sys.argv[1]; from qcloud_ai import QCloud, AsyncQCloud" "$VERSION"
-
-  publish-pypi:
-    if: inputs.target == 'pypi'
-    needs: [build, verify-testpypi]
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/qcloud-ai/${{ inputs.version }}/
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: dist
-          path: dist/
-      - name: Verify the tested files
-        env:
+          TARGET: ${{ inputs.target }}
           EXPECTED: ${{ needs.build.outputs.sha256 }}
         run: |
-          cd dist && test "$(sha256sum SHA256SUMS | cut -d' ' -f1)" = "$EXPECTED" && sha256sum -c SHA256SUMS && rm SHA256SUMS
-      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+          test "$(sha256sum expected/SHA256SUMS | cut -d' ' -f1)" = "$EXPECTED"
+          python scripts/verify_registry.py --version "$VERSION" --target "$TARGET" --expected expected --output dist
+          python scripts/check_package.py
 
   github-release:
-    needs: [build, publish-pypi]
+    if: inputs.target == 'pypi'
+    needs: [build, verify-registry]
     runs-on: ubuntu-latest
     permissions:
       contents: write

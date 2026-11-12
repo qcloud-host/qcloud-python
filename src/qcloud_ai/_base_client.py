@@ -39,7 +39,9 @@ def _retryable_status(method: str, status: int) -> bool:
 
 
 def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
-    delay = _retry_after_seconds(response.headers.get("retry-after")) if response else None
+    delay = (
+        _retry_after_seconds(response.headers.get("retry-after")) if response else None
+    )
     if delay is not None and delay <= 60:
         return delay
     return min(0.5 * 2**attempt, 8) * (0.75 + random.random() * 0.25)
@@ -49,11 +51,18 @@ def _binary_error(response: httpx.Response, raw: bytes) -> None:
     try:
         data = json.loads(raw)
     except (ValueError, UnicodeDecodeError, RecursionError):
-        data = {"error": {"message": raw.decode("utf-8", errors="replace")[:500] or response.reason_phrase}}
+        data = {
+            "error": {
+                "message": raw.decode("utf-8", errors="replace")[:500]
+                or response.reason_phrase
+            }
+        }
     _raise_for_status(response.status_code, data, response.headers)
 
 
-def _validate_response(response: httpx.Response, stream: bool, binary: bool = False) -> None:
+def _validate_response(
+    response: httpx.Response, stream: bool, binary: bool = False
+) -> None:
     if not 200 <= response.status_code < 300:
         try:
             data = response.json()
@@ -65,13 +74,21 @@ def _validate_response(response: httpx.Response, stream: bool, binary: bool = Fa
     if stream:
         if "text/event-stream" not in response.headers.get("content-type", ""):
             raise APIResponseValidationError(
-                "Expected an SSE response from the streaming endpoint"
+                "Expected an SSE response from the streaming endpoint",
+                status_code=response.status_code,
+                request_id=response.headers.get("x-request-id")
+                or response.headers.get("request-id"),
             )
     else:
         try:
             response.json()
-        except ValueError as error:
-            raise APIResponseValidationError("The API returned invalid JSON") from error
+        except ValueError:
+            raise APIResponseValidationError(
+                "The API returned invalid JSON",
+                status_code=response.status_code,
+                request_id=response.headers.get("x-request-id")
+                or response.headers.get("request-id"),
+            ) from None
 
 
 class BaseClient:
@@ -153,7 +170,10 @@ AsyncClientT = TypeVar("AsyncClientT", bound="AsyncHTTPClient")
 class SyncHTTPClient(BaseClient):
     def _upload(self, source: Any, **options: Any):
         from ._uploads import upload_file
-        return upload_file(self._client, self.base_url, self._headers, source, **options)
+
+        return upload_file(
+            self._client, self.base_url, self._headers, source, **options
+        )
 
     def __init__(
         self, *, http_client: httpx.Client | None = None, **kwargs: Any
@@ -194,7 +214,9 @@ class SyncHTTPClient(BaseClient):
                 response = self._client.send(
                     request, stream=stream or binary, follow_redirects=False
                 )
-                if attempt < retries and _retryable_status(method, response.status_code):
+                if attempt < retries and _retryable_status(
+                    method, response.status_code
+                ):
                     delay = _retry_delay(response, attempt)
                     response.close()
                     time.sleep(delay)
@@ -203,7 +225,7 @@ class SyncHTTPClient(BaseClient):
                     if binary:
                         raw = bytearray()
                         for chunk in response.iter_raw(chunk_size=65536):
-                            raw.extend(chunk[:65536 - len(raw)])
+                            raw.extend(chunk[: 65536 - len(raw)])
                             if len(raw) >= 65536:
                                 break
                         _binary_error(response, bytes(raw))
@@ -242,7 +264,10 @@ class SyncHTTPClient(BaseClient):
 class AsyncHTTPClient(BaseClient):
     async def _upload(self, source: Any, **options: Any):
         from ._uploads import async_upload_file
-        return await async_upload_file(self._client, self.base_url, self._headers, source, **options)
+
+        return await async_upload_file(
+            self._client, self.base_url, self._headers, source, **options
+        )
 
     def __init__(
         self, *, http_client: httpx.AsyncClient | None = None, **kwargs: Any
@@ -283,7 +308,9 @@ class AsyncHTTPClient(BaseClient):
                 response = await self._client.send(
                     request, stream=stream or binary, follow_redirects=False
                 )
-                if attempt < retries and _retryable_status(method, response.status_code):
+                if attempt < retries and _retryable_status(
+                    method, response.status_code
+                ):
                     delay = _retry_delay(response, attempt)
                     await response.aclose()
                     await asyncio.sleep(delay)
@@ -292,7 +319,7 @@ class AsyncHTTPClient(BaseClient):
                     if binary:
                         raw = bytearray()
                         async for chunk in response.aiter_raw(chunk_size=65536):
-                            raw.extend(chunk[:65536 - len(raw)])
+                            raw.extend(chunk[: 65536 - len(raw)])
                             if len(raw) >= 65536:
                                 break
                         _binary_error(response, bytes(raw))

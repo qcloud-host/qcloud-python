@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Union, Literal, overload
 
+from .._response import parse_response
 from .._base_client import SyncHTTPClient, AsyncHTTPClient
-from .._exceptions import _raise_for_status
 from .._streaming import Stream, AsyncStream
 from ..types.completion import Completion, CompletionChunk
 
@@ -21,6 +21,8 @@ class Completions:
         model: str,
         prompt: str,
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Completion: ...
 
@@ -31,6 +33,8 @@ class Completions:
         model: str,
         prompt: str,
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Stream[CompletionChunk]: ...
 
@@ -41,6 +45,8 @@ class Completions:
         model: str,
         prompt: str,
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Completion, Stream[CompletionChunk]]: ...
 
@@ -50,6 +56,8 @@ class Completions:
         model: str,
         prompt: str,
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Completion, Stream[CompletionChunk]]:
         body: Dict[str, Any] = {"model": model, "prompt": prompt, **kwargs}
@@ -61,14 +69,14 @@ class Completions:
             "/completions",
             body=body,
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
         )
 
         if stream:
             return Stream(response, cast=CompletionChunk)
 
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return Completion(**data)
+        return parse_response(response, Completion)
 
 
 class AsyncCompletions:
@@ -84,6 +92,8 @@ class AsyncCompletions:
         model: str,
         prompt: str,
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Completion: ...
 
@@ -94,6 +104,8 @@ class AsyncCompletions:
         model: str,
         prompt: str,
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> AsyncStream[CompletionChunk]: ...
 
@@ -104,6 +116,8 @@ class AsyncCompletions:
         model: str,
         prompt: str,
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Completion, AsyncStream[CompletionChunk]]: ...
 
@@ -113,6 +127,8 @@ class AsyncCompletions:
         model: str,
         prompt: str,
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[Completion, AsyncStream[CompletionChunk]]:
         body: Dict[str, Any] = {"model": model, "prompt": prompt, **kwargs}
@@ -124,11 +140,11 @@ class AsyncCompletions:
             "/completions",
             body=body,
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
         )
 
         if stream:
             return AsyncStream(response, cast=CompletionChunk)
 
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return Completion(**data)
+        return parse_response(response, Completion)

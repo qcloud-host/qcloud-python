@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union, Literal, overload
 
+from .._response import parse_response
 from .._base_client import SyncHTTPClient, AsyncHTTPClient
-from .._exceptions import _raise_for_status
 from .._streaming import Stream, AsyncStream
 from ..types.chat import ChatCompletion, ChatCompletionChunk
 
@@ -21,6 +21,8 @@ class ChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> ChatCompletion: ...
 
@@ -31,6 +33,8 @@ class ChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Stream[ChatCompletionChunk]: ...
 
@@ -41,6 +45,8 @@ class ChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]: ...
 
@@ -50,6 +56,8 @@ class ChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]:
         body: Dict[str, Any] = {"model": model, "messages": messages, **kwargs}
@@ -61,14 +69,14 @@ class ChatCompletions:
             "/chat/completions",
             body=body,
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
         )
 
         if stream:
             return Stream(response, cast=ChatCompletionChunk)
 
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return ChatCompletion(**data)
+        return parse_response(response, ChatCompletion)
 
 
 class AsyncChatCompletions:
@@ -84,6 +92,8 @@ class AsyncChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Literal[False] | None = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> ChatCompletion: ...
 
@@ -94,6 +104,8 @@ class AsyncChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Literal[True],
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> AsyncStream[ChatCompletionChunk]: ...
 
@@ -104,6 +116,8 @@ class AsyncChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: bool = ...,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]: ...
 
@@ -113,6 +127,8 @@ class AsyncChatCompletions:
         model: str,
         messages: List[Dict[str, Any]],
         stream: Optional[bool] = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
         **kwargs: Any,
     ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]:
         body: Dict[str, Any] = {"model": model, "messages": messages, **kwargs}
@@ -124,14 +140,14 @@ class AsyncChatCompletions:
             "/chat/completions",
             body=body,
             stream=bool(stream),
+            timeout=timeout,
+            max_retries=max_retries,
         )
 
         if stream:
             return AsyncStream(response, cast=ChatCompletionChunk)
 
-        data = response.json()
-        _raise_for_status(response.status_code, data)
-        return ChatCompletion(**data)
+        return parse_response(response, ChatCompletion)
 
 
 class Chat:
