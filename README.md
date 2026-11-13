@@ -9,13 +9,13 @@ A typed Python client for QCloud inference and generation, with synchronous and 
 
 ## Install
 
-Python 3.10 or newer. Until the first PyPI release, install from this repository:
+The SDK requires Python 3.10 or newer. Install the published release from PyPI.
 
 ```bash
-python -m pip install "git+https://github.com/qcloud-host/qcloud-python.git"
+python -m pip install qcloud-ai
 ```
 
-The prepared distribution is named `qcloud-ai` and imported as `qcloud_ai`. Registry publication is a separate release step.
+Import the SDK as `qcloud_ai`. To install directly from the development branch, run `python -m pip install "git+https://github.com/qcloud-host/qcloud-python.git"`.
 
 ## First request
 
@@ -368,8 +368,8 @@ both together and request `sessions.close(id)` during cleanup. Socket closure
 alone does not prove remote media stopped or billing was settled. The SDK
 returns the typed capability; it does not create or manage media peers.
 
-For native `transport="websocket"` sessions, install the source extra with
-`python -m pip install 'qcloud-ai[realtime] @ git+https://github.com/qcloud-host/qcloud-python.git'`
+For native `transport="websocket"` sessions, install the realtime extra with
+`python -m pip install "qcloud-ai[realtime]"`
 and use the optional raw-message helper:
 
 ```python

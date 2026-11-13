@@ -1,8 +1,6 @@
 # Release guide
 
-Version 0.4.0 is an unpublished source release candidate. Check the registry
-before releasing; a published version is immutable and changed files must never
-be uploaded under an existing version. The distribution name is `qcloud-ai`.
+Check PyPI before releasing. An uploaded version is immutable. Release changed files under a new version of `qcloud-ai`.
 
 ## One-time setup
 
@@ -48,9 +46,8 @@ checks do not make paid QCloud requests.
    registry metadata and downloaded bytes to the tested checksums, and runs the
    clean-install package check again. For PyPI only, successful verification
    creates a draft GitHub release with the artifacts and checksums.
-5. Confirm the registry page and draft release, update the README's installation
-   instructions and candidate marker only after publication, then publish the
-   draft as tag `v0.4.0`.
+5. Confirm the registry page and draft release, then publish the draft as tag
+   `v<version>`.
 
 TestPyPI and PyPI runs are independent builds. A separate run does **not** reuse
 first-run artifacts, and this workflow does not claim byte-for-byte promotion

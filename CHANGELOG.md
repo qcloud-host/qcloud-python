@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — source candidate, not published
+## 0.4.0
 
 - Per-request timeout and retry controls for sync/async inference and model catalog calls.
 - Consistent SDK validation errors with request IDs for malformed successful JSON responses.
